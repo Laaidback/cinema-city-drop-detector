@@ -169,14 +169,24 @@ dev = ["pytest>=8.0"]
 testpaths = ["tests"]
 ```
 
-- [ ] **Step 2: Utwórz środowisko i zainstaluj**
+- [ ] **Step 2: Utwórz katalogi pakietów**
+
+```bash
+mkdir -p ccdrop tests
+touch ccdrop/__init__.py tests/__init__.py
+```
+
+Musi się to zdarzyć **przed** instalacją. Editable install przy nieistniejącym `ccdrop/` kończy się
+sukcesem, ale nie mapuje pakietu — `import ccdrop` nadal zawodzi i trzeba instalować ponownie.
+
+- [ ] **Step 3: Utwórz środowisko i zainstaluj**
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
 
-- [ ] **Step 3: Napisz test dymny**
+- [ ] **Step 4: Napisz test dymny**
 
 `tests/test_smoke.py`:
 
@@ -187,12 +197,12 @@ def test_package_imports():
     assert ccdrop is not None
 ```
 
-- [ ] **Step 4: Uruchom testy**
+- [ ] **Step 5: Uruchom testy**
 
 Run: `.venv/bin/pytest -v`
 Expected: 1 passed
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml ccdrop tests
