@@ -2112,12 +2112,13 @@ from datetime import date, timedelta
 
 import requests
 
-from ccdrop.api import cinemas_url, parse_cinema_names
+from ccdrop.api import USER_AGENT, cinemas_url, parse_cinema_names
 
 if __name__ == "__main__":
     needle = sys.argv[1].casefold() if len(sys.argv) > 1 else ""
     until = (date.today() + timedelta(days=30)).isoformat()
-    names = parse_cinema_names(requests.get(cinemas_url(until), timeout=30).json())
+    response = requests.get(cinemas_url(until), headers={"User-Agent": USER_AGENT}, timeout=30)
+    names = parse_cinema_names(response.json())
     for cinema_id, name in sorted(names.items(), key=lambda kv: kv[1]):
         if needle in name.casefold():
             print(f"{cinema_id}  {name}")
@@ -2130,6 +2131,9 @@ if __name__ == "__main__":
 ```
 
 Oczekiwane: kilka linii z numerami krakowskich kin. Zapisz numer potrzebnego kina.
+
+Własny `User-Agent` jest tu konieczny, nie kosmetyczny — Cloudflare odrzuca domyślny
+`python-requests` kodem 403.
 
 - [ ] **Step 3: Napisz `tools/get_chat_id.py`**
 
