@@ -1,6 +1,4 @@
-import pytest
-
-from ccdrop.api import FetchOutcome, ApiClient
+from ccdrop.api import ApiClient, FetchOutcome
 
 
 class FakeResponse:

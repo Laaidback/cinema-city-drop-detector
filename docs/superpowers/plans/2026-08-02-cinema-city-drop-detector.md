@@ -1092,9 +1092,7 @@ git commit -m "feat: add Cinema City API urls and parsing"
 Użyj podstawionej sesji zamiast prawdziwej sieci.
 
 ```python
-import pytest
-
-from ccdrop.api import FetchOutcome, ApiClient
+from ccdrop.api import ApiClient, FetchOutcome
 
 
 class FakeResponse:
