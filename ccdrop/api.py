@@ -65,7 +65,6 @@ def parse_cinema_names(payload: dict) -> dict[str, str]:
 
 class FetchOutcome(Enum):
     OK = "ok"
-    NOT_MODIFIED = "not_modified"
     FAILED = "failed"
 
 
@@ -73,7 +72,6 @@ class FetchOutcome(Enum):
 class FetchResult:
     status: FetchOutcome
     payload: dict | None = None
-    last_modified: str | None = None
 
 
 class ApiClient:
@@ -81,10 +79,8 @@ class ApiClient:
         self.session = session or requests.Session()
         self.sleep = sleep
 
-    def fetch(self, url: str, last_modified: str | None) -> FetchResult:
+    def fetch(self, url: str) -> FetchResult:
         headers = {"User-Agent": USER_AGENT}
-        if last_modified:
-            headers["If-Modified-Since"] = last_modified
 
         for attempt in range(MAX_ATTEMPTS):
             try:
@@ -95,14 +91,8 @@ class ApiClient:
 
             log.debug("%s -> HTTP %s", url, response.status_code)
 
-            if response.status_code == 304:
-                return FetchResult(FetchOutcome.NOT_MODIFIED)
             if response.status_code == 200:
-                return FetchResult(
-                    FetchOutcome.OK,
-                    payload=response.json(),
-                    last_modified=response.headers.get("Last-Modified"),
-                )
+                return FetchResult(FetchOutcome.OK, payload=response.json())
             if response.status_code == 429 or response.status_code >= 500:
                 self.sleep(2**attempt)
                 continue
@@ -119,7 +109,7 @@ class CinemaCityApi:
         self.client = client
 
     def fetch_cinema_names(self, until: str) -> dict[str, str]:
-        result = self.client.fetch(cinemas_url(until), None)
+        result = self.client.fetch(cinemas_url(until))
         self.client.throttle()
         if result.status is not FetchOutcome.OK:
             log.warning("Nie udało się pobrać nazw kin — powiadomienia pokażą numery")
@@ -127,15 +117,15 @@ class CinemaCityApi:
         return parse_cinema_names(result.payload)
 
     def fetch_dates(self, cinema_id: str, until: str) -> list[str] | None:
-        result = self.client.fetch(dates_url(cinema_id, until), None)
+        result = self.client.fetch(dates_url(cinema_id, until))
         self.client.throttle()
         if result.status is not FetchOutcome.OK:
             log.warning("Brak listy dat dla kina %s — kino pominięte w tym cyklu", cinema_id)
             return None
         return parse_dates(result.payload)
 
-    def fetch_events(self, cinema_id: str, day: str, last_modified: str | None):
-        result = self.client.fetch(events_url(cinema_id, day), last_modified)
+    def fetch_events(self, cinema_id: str, day: str):
+        result = self.client.fetch(events_url(cinema_id, day))
         self.client.throttle()
         log.debug("kino %s dzień %s -> %s", cinema_id, day, result.status.value)
         return result

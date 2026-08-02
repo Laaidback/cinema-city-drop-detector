@@ -11,7 +11,6 @@ class FakeApi:
         self.events_by_date = events_by_date
         self.failed_dates = set(failed_dates)
         self.dates_fail = dates_fail
-        self.conditional_calls = []
 
     def fetch_cinema_names(self, until):
         return {"1090": "Kraków Bonarka"}
@@ -21,9 +20,7 @@ class FakeApi:
             return None
         return sorted(set(self.events_by_date) | self.failed_dates)
 
-    def fetch_events(self, cinema_id, day, last_modified):
-        if last_modified is not None:
-            self.conditional_calls.append((cinema_id, day))
+    def fetch_events(self, cinema_id, day):
         if day in self.failed_dates:
             return FetchResult(FetchOutcome.FAILED)
         raw = [
@@ -42,7 +39,7 @@ class FakeApi:
         payload = {
             "body": {"films": [{"id": "f1", "name": "Backrooms. Bez wyjścia"}], "events": raw}
         }
-        return FetchResult(FetchOutcome.OK, payload=payload, last_modified="LM")
+        return FetchResult(FetchOutcome.OK, payload=payload)
 
 
 class FakeNotifier:

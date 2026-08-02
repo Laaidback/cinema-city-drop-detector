@@ -5,7 +5,7 @@ class StubClient:
     def __init__(self, result):
         self.result = result
 
-    def fetch(self, url, last_modified):
+    def fetch(self, url):
         return self.result
 
     def throttle(self):

@@ -18,11 +18,7 @@ def load_state(state_dir: Path) -> State:
         key: WatchState(warm=bool(v.get("warm")), seen_events=dict(v.get("seen_events", {})))
         for key, v in raw.get("watch_state", {}).items()
     }
-    return State(
-        watch_state=watch,
-        http_cache=dict(raw.get("http_cache", {})),
-        cinema_names=dict(raw.get("cinema_names", {})),
-    )
+    return State(watch_state=watch, cinema_names=dict(raw.get("cinema_names", {})))
 
 
 def serialize(state: State) -> str:
@@ -32,7 +28,6 @@ def serialize(state: State) -> str:
             key: {"warm": v.warm, "seen_events": v.seen_events}
             for key, v in state.watch_state.items()
         },
-        "http_cache": state.http_cache,
         "cinema_names": state.cinema_names,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -55,5 +50,4 @@ def prune(state: State, today: str) -> State:
         )
         for key, v in state.watch_state.items()
     }
-    cache = {key: lm for key, lm in state.http_cache.items() if key.split("|", 1)[1] >= today}
-    return State(watch_state=watch, http_cache=cache, cinema_names=dict(state.cinema_names))
+    return State(watch_state=watch, cinema_names=dict(state.cinema_names))

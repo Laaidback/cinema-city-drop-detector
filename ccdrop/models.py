@@ -44,5 +44,4 @@ class WatchState:
 @dataclass
 class State:
     watch_state: dict[str, WatchState] = field(default_factory=dict)
-    http_cache: dict[str, str] = field(default_factory=dict)
     cinema_names: dict[str, str] = field(default_factory=dict)
