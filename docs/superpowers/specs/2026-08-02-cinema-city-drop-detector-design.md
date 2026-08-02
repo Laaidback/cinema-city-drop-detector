@@ -57,8 +57,22 @@ Trzy obserwacje, które kształtują architekturę:
    Odpytywanie częściej niż raz na minutę zwraca bajt w bajt tę samą odpowiedź — 60 s to
    twarde dno sensowności. `cf-cache-status: HIT` potwierdza, że ruch nie dociera do serwerów
    Cinema City.
-3. **`If-Modified-Since` działa.** Przy niezmienionym repertuarze odpowiedź to `304` i **0 bajtów**
-   zamiast ~101 KB. Dzięki temu koszt cyklu jest niemal niezależny od liczby skanowanych dni.
+3. **Żądania warunkowe są bezużyteczne.** `If-Modified-Since` daje `304` wyłącznie w ciągu 60 s od
+   poprzedniego pobrania. Później origin zwraca `200` z **nowym** `Last-Modified`, mimo
+   niezmienionego repertuaru — to znacznik wygenerowania odpowiedzi, nie odcisk treści.
+   Nagłówka `ETag` nie ma w ogóle. Zmierzone na produkcji:
+
+   ```
+   t=0      Last-Modified: 12:04:51
+   t=+70s   HTTP 200  LM=12:06:02  cf-cache-status: EXPIRED
+   t=+150s  HTTP 200  LM=12:08:32  cf-cache-status: EXPIRED
+   ```
+
+   Przy cronie co 5 minut `304` nie wystąpi nigdy, więc **każde pobranie jest bezwarunkowe**.
+   Transfer to nie problem — `gzip` sprowadza pełny cykl 35 dni do ok. 650 KB. Problemem byłoby
+   utrwalanie `Last-Modified`: zmieniałby się co cykl, plik stanu zmieniałby się co cykl, a
+   zabezpieczenie „commit tylko przy realnej zmianie" nigdy by nie zadziałało. Dlatego mechanizmu
+   cache'owania nie ma w ogóle.
 
 Konsekwencja dla dopasowywania filmów: film przed premierą **nie istnieje jeszcze** w API, więc nie
 ma `filmId`. Obserwowane pozycje są dopasowywane wyłącznie **po nazwie**.
@@ -66,8 +80,7 @@ ma `filmId`. Obserwowane pozycje są dopasowywane wyłącznie **po nazwie**.
 ## Architektura
 
 Rdzeniem jest czysta funkcja `detect()`. Kluczowe: operuje **wyłącznie** na zbiorze widzianych
-seansów, nie na całym pliku stanu. Nagłówki `Last-Modified` to domena warstwy HTTP i nigdy nie
-przechodzą przez rdzeń.
+seansów, nie na całym pliku stanu.
 
 ```
 detect(config, seen, pobrane_eventy, kina_kompletne) -> (dropy, aktualizacje_seen)
@@ -91,7 +104,7 @@ cinema-city-drop-detector/
 ├─ config.yaml              # co śledzić — jedyny plik edytowany na co dzień
 ├─ ccdrop/
 │  ├─ config.py             # wczytanie i walidacja konfiguracji
-│  ├─ api.py                # klient HTTP: warunkowe GET-y, throttle, backoff
+│  ├─ api.py                # klient HTTP: pobieranie, throttle, backoff
 │  ├─ models.py             # dataclasses: Cinema, Film, Event, Drop
 │  ├─ detector.py           # czysta logika diffowania
 │  ├─ notifier.py           # formatowanie wiadomości i wysyłka
@@ -110,7 +123,7 @@ podejmuje wyłącznie `main`.
 
 ## Model stanu
 
-Plik `state/seen.json`, trzy niezależne sekcje:
+Plik `state/seen.json`, dwie niezależne sekcje:
 
 ```json
 {
@@ -121,10 +134,12 @@ Plik `state/seen.json`, trzy niezależne sekcje:
       "seen_events": { "1600867": "2026-08-15" }
     }
   },
-  "http_cache": { "1090|2026-08-02": "Sat, 01 Aug 2026 21:07:38 GMT" },
   "cinema_names": { "1090": "Kraków Bonarka" }
 }
 ```
+
+Obie zmieniają się wyłącznie wtedy, gdy zmieni się repertuar. To warunek konieczny, by
+zabezpieczenie „commit tylko przy realnej zmianie" na gałęzi `state` w ogóle działało.
 
 **Kluczem `watch_state` jest para (wartość `match` × numer kina).** Nie sam wpis `watch` — bo
 dopisanie kina do globalnej listy `cinemas` nie tworzy nowego wpisu, a para (film × nowe kino) jest
@@ -136,12 +151,12 @@ pożądane: inny `match` to inne zapytanie.
 `seen_events` mapuje identyfikator seansu na jego `businessDay` — wyłącznie po to, by dało się
 przycinać stan.
 
-**Aktualizacje stanu są zawsze scalane, nigdy nie zastępują poprzedniej zawartości.** Pary
-zwracające `304` nie trafiają do `pobrane_eventy`, więc przy semantyce „zastąp" ich seanse
-wypadłyby ze stanu i wróciłyby jako fałszywe dropy przy najbliższym `200`.
+**Aktualizacje stanu są zawsze scalane, nigdy nie zastępują poprzedniej zawartości.** Data, której
+nie udało się pobrać, nie wnosi żadnych seansów do `pobrane_eventy` — przy semantyce „zastąp" jej
+seanse wypadłyby ze stanu i wróciłyby jako fałszywe dropy przy najbliższym udanym pobraniu.
 
-**Przycinanie** przy każdym zapisie: usuwane są wpisy `seen_events` z datą wcześniejszą niż dziś
-oraz klucze `http_cache` dla minionych dat. Bez tego plik rośnie bez końca.
+**Przycinanie** przy każdym zapisie: usuwane są wpisy `seen_events` z datą wcześniejszą niż dziś.
+Bez tego plik rośnie bez końca.
 
 ## Przepływ jednego cyklu
 
@@ -151,63 +166,45 @@ oraz klucze `http_cache` dla minionych dat. Bez tego plik rośnie bez końca.
 3. Dla każdego kina: `dates/in-cinema/{id}/until/{dziś + horizon_days}` — realna lista dat.
    Kino nie gra codziennie, więc odpytywanie o kalendarzowy zakres generowałoby puste odpowiedzi.
    Niepowodzenie tego kroku wyklucza kino z `kina_kompletne` i pomija je w całym cyklu.
-4. Dla każdej pary (kino, data): `film-events/...` z nagłówkiem `If-Modified-Since`, o ile para ma
-   wpis w `http_cache` — bez wpisu żądanie jest bezwarunkowe.
-   `304` — pomijamy, `200` — parsujemy. Throttle 200 ms między żądaniami.
-   **Wyjątek:** jeżeli którakolwiek para (wpis `watch` × to kino) jest zimna, wszystkie daty tego
-   kina pobieramy **bezwarunkowo**, bez `If-Modified-Since`. Uzasadnienie w sekcji „Zimny start".
+4. Dla każdej pary (kino, data): `film-events/...` — pobranie bezwarunkowe, bo warunkowe i tak nie
+   działa. Throttle 200 ms między żądaniami.
 5. `detect()` — dopasowanie do wpisów `watch` **oraz** diff. Jedno miejsce, nie dwa.
 6. Wyślij jedną wiadomość na grupę (film × kino).
 7. Zapisz stan według reguł poniżej.
 
-Przy dwóch kinach i ~30 granych dniach to ok. 63 żądania na cykl, z czego niemal wszystkie kończą
-się `304` o zerowej wielkości.
+Przy jednym kinie i 35 granych dniach to 37 żądań na cykl i ok. 650 KB po kompresji.
 
 ## Reguły utrwalania stanu
 
 Sedno poprawności całego narzędzia. Cel: **at-least-once** — duplikat wiadomości irytuje,
 przegapiony drop kosztuje bilet.
 
-| Sytuacja | `seen_events` | `http_cache` |
-|---|---|---|
-| Wysyłka grupy udana | dopisz ID tej grupy | patrz niżej |
-| Wysyłka grupy nieudana | **nie dopisuj** | **nie aktualizuj** |
-| Pobranie pary nieudane (po 3 próbach) | bez zmian | **usuń wpis** |
-| Zimny start, kino w `kina_kompletne` | dopisz wszystkie pobrane pasujące, ustaw `warm` | aktualizuj |
-| Zimny start, kino bez listy dat | **nie dopisuj**, zostaw zimną | **nie aktualizuj** |
-| Przebieg `--dry-run` | **nie zapisuj** | **nie zapisuj** |
+| Sytuacja | `seen_events` |
+|---|---|
+| Wysyłka grupy udana | dopisz ID tej grupy |
+| Wysyłka grupy nieudana | **nie dopisuj** |
+| Pobranie daty nieudane (po 3 próbach) | bez zmian |
+| Zimny start, kino w `kina_kompletne` | dopisz wszystkie pobrane pasujące, ustaw `warm` |
+| Zimny start, kino bez listy dat | **nie dopisuj**, zostaw zimną |
+| Przebieg `--dry-run` | **nie zapisuj** |
 
 Wiersz `--dry-run` nie jest formalnością: podgląd, który po cichu ociepliłby pary, zjadłby dropa
 bez wysłania powiadomienia i złamał at-least-once. Przebieg próbny nie dotyka pliku stanu w żadnej
 sekcji, łącznie z flagą `warm`.
 
-Reguła nadrzędna dla `http_cache`, celowo konserwatywna:
+Reguły są tak proste dlatego, że nie ma cache'u HTTP. Wcześniejsza wersja projektu utrwalała
+`Last-Modified` i wymagała dwóch dodatkowych reguł — blokady aktualizacji przy nieudanej wysyłce
+oraz usuwania wpisu przy nieudanym pobraniu — żeby data nie wpadła w martwą strefę, w której
+kolejne cykle dostają `304` i nigdy nie widzą jej seansów, mimo że nie ma ich w baseline. Usunięcie
+cache'u likwiduje tę klasę błędów w całości: każde pobranie jest bezwarunkowe, więc dane albo są,
+albo ich nie ma.
 
-> Jeżeli w cyklu **jakakolwiek** wysyłka zawiodła, nie aktualizujemy `http_cache` **w ogóle**.
-
-Zapisanie `Last-Modified` przy jednoczesnym niezapisaniu widzianych seansów jest jedynym sposobem
-na trwałe zgubienie dropa: następny cykl dostałby `304`, pominął parę i nigdy nie wysłał
-powiadomienia. Reguła nie może wywołać duplikatu, bo seanse już dopisane do `seen_events` i tak
-nie zostaną uznane za nowe, ani zapętlenia — grupy wysłane skutecznie znikają ze zbioru dropów,
-więc ten monotonicznie maleje aż do zbieżności.
-
-Wiersz 3 mówi **usuń**, nie „zostaw poprzednią wartość", i to rozróżnienie jest krytyczne.
-Zachowanie nieaktualnego `Last-Modified` dla daty, której nie udało się pobrać, wpycha ją w martwą
-strefę: kolejny cykl wyśle warunkowy GET, dostanie `304` i nigdy nie zobaczy jej seansów, mimo że
-nie ma ich w baseline. Wisiałyby tam do przypadkowej zmiany nagłówka, a wtedy poleciałby komplet
-seansów z całego dnia. Usunięcie wpisu kosztuje jedną pełną odpowiedź w cyklu odzyskania.
+Nieudana wysyłka nie może wywołać duplikatu, bo seanse już dopisane do `seen_events` i tak nie
+zostaną uznane za nowe, ani zapętlenia — grupy wysłane skutecznie znikają ze zbioru dropów, więc
+ten monotonicznie maleje aż do zbieżności.
 
 Tabela opisuje, **co ostatecznie ląduje w pliku**, a nie gdzie zapada decyzja: `warm` i zbiór
 widzianych seansów wylicza `detect()`, `main` jedynie autoryzuje zapis.
-
-Kosztem jest transfer, i to nie jednorazowy: blokada trwa **do pierwszej udanej wysyłki**. Przy
-dłuższej niedostępności Telegrama każdy cykl pobiera komplet pełnych odpowiedzi zamiast `304`,
-czyli ok. 6 MB co pięć minut. Świadomie tego nie ograniczamy. Rozważane odcięcie po N nieudanych
-cyklach wymagałoby licznika utrwalanego wbrew całej powyższej dyscyplinie zapisu, zerowania go po
-sukcesie oraz osobnej sondy sprawdzającej, czy Telegram wrócił — trzy nowe mechanizmy po to, by
-zaoszczędzić transfer, który i tak obsługuje brzeg Cloudflare, a nie serwery Cinema City. Awarie
-Telegrama są rzadkie i krótkie, a stan pozostaje nietknięty, więc żaden drop nie ginie. Mechanizm
-sam się leczy przy pierwszej udanej wysyłce.
 
 Zapis pliku jest atomowy (zapis do pliku tymczasowego i `rename`), żeby przerwany proces nie
 zostawił uszkodzonego JSON-a. Serializacja jest **deterministyczna** — `sort_keys=True`, stałe
@@ -222,45 +219,28 @@ wysłałby setki wiadomości.
 
 Zasada: **para (wpis `watch` × kino) w pierwszym cyklu tylko zapisuje stan i nie wysyła nic.**
 
-Brak klucza w `watch_state` liczy się jako para zimna, na równi z `warm: false` — to pierwszy
-warunek do zakodowania w kroku 4.
+Brak klucza w `watch_state` liczy się jako para zimna, na równi z `warm: false`.
 
 Para ociepla się, gdy jej kino znajdzie się w `kina_kompletne`, czyli gdy **lista dat** pobrała się
 poprawnie. Baseline tworzą wszystkie pasujące seanse z dat, które udało się pobrać.
 
-**Współdzielony cache.** `http_cache` jest wspólny dla wszystkich wpisów, bo kluczem jest
-(kino, data). Gdy kino jest już skanowane dla innego wpisu, cache ma komplet nagłówków, więc skan
-nowej zimnej pary zwróciłby same `304` — zero danych, zero błędów, a mimo to baseline pusty. Przy najbliższej zmianie repertuaru dowolnego dnia wszystkie pasujące seanse,
-sprzedawane od tygodni, poleciałyby jako świeże. Dlatego obecność choćby jednej zimnej pary wymusza
-bezwarunkowe pobranie wszystkich dat tego kina (krok 4 przepływu).
-
-Pierwsze w życiu uruchomienie tej pułapki nie ujawni — przy pustym `http_cache` wszystko i tak
-wraca jako `200`. Problem wychodzi dopiero przy dodaniu drugiego wpisu.
-
-**Pusto spełniony warunek.** Gdy pobranie listy dat dla kina zawiedzie, zbiór jego par (kino, data)
-jest pusty — warunek oparty na „żadna data nie zawiodła" byłby wtedy prawdziwy pusto i ocieplił parę
-z zerowym baseline. Dlatego kryterium jest pozytywne: kino musi mieć **pobraną listę dat**, a nie
-jedynie brak błędów.
+**Pusto spełniony warunek.** Gdy pobranie listy dat dla kina zawiedzie, zbiór jego dat jest pusty —
+warunek oparty na „żadna data nie zawiodła" byłby wtedy prawdziwy pusto i ocieplił parę z zerowym
+baseline. Dlatego kryterium jest pozytywne: kino musi mieć **pobraną listę dat**, a nie jedynie brak
+błędów.
 
 ### Dlaczego nie wymagamy wszystkich dat
 
 Naturalne wzmocnienie — „ociepl dopiero, gdy każda data zwróci treść" — tworzy pułapkę bez wyjścia.
-Jedna data trwale zwracająca błąd wyklucza kino w **każdym** cyklu: para zostaje zimna, zimna para
-wymusza pobranie bezwarunkowe, więc kolejny cykl ściąga komplet dat od nowa i znów nie osiąga
-kompletności. Wpis nigdy się nie ociepla, więc **nigdy nie wysyła powiadomienia**, a każdy cykl
-ściąga kilka megabajtów. Wszystko po cichu.
+Jedna data trwale zwracająca błąd wykluczałaby kino w **każdym** cyklu, więc wpis nigdy by się nie
+ociepli i **nigdy nie wysłałby powiadomienia**. Po cichu, bez żadnego sygnału.
 
 Dla narzędzia, którego cała racja bytu to at-least-once, trwałe milczenie jest najgorszym możliwym
 wynikiem — gorszym niż fałszywy alarm. Dlatego wybieramy odwrotny kompromis:
 
-> Data, która zawiodła podczas zimnego startu, nie trafia do baseline. Jej wpis w `http_cache`
-> zostaje **usunięty** (wiersz 3 tabeli), więc kolejne cykle pobierają ją bezwarunkowo. Gdy w końcu
-> się powiedzie, jej seanse zostaną raz zgłoszone jako nowe, mimo że są w sprzedaży od dawna.
-
-Usunięcie wpisu jest tu warunkiem koniecznym, nie szczegółem. Gdyby wiersz 3 zostawiał poprzednią
-wartość, przesłanka „pobierane bezwarunkowo" byłaby prawdziwa wyłącznie przy pierwszym w życiu
-uruchomieniu — w kinie skanowanym od miesięcy data miałaby stary nagłówek i wpadła w martwą strefę
-opisaną wyżej.
+> Data, która zawiodła podczas zimnego startu, nie trafia do baseline. Kolejne cykle pobierają ją
+> normalnie, a gdy w końcu się powiedzie, jej seanse zostaną raz zgłoszone jako nowe, mimo że są
+> w sprzedaży od dawna.
 
 Cena jest ograniczona do jednego dnia repertuaru i tylko w rzadkim przypadku trwale niedostępnej
 daty. W zamian **żadna para nie może pozostać zimna w nieskończoność** — wystarczy, że pobierze się
@@ -453,23 +433,24 @@ z produkcyjnego API.
 - dopasowanie po wyrażeniu regularnym działa na oryginalnym tytule,
 - zawężenie wpisu do podzbioru kin,
 - dopisanie kina do globalnej listy wywołuje zimny start tylko dla nowej pary,
-- nowy wpis przy już wypełnionym `http_cache` **nie** przechodzi w `warm` z pustym baseline,
 - kino bez pobranej listy dat nie ociepla żadnej ze swoich par,
-- para z jedną trwale błędną datą **ociepla się mimo to** i nie zostaje zimna w nieskończoność,
-- brak klucza w `watch_state` jest traktowany jak para zimna.
+- brak klucza w `watch_state` jest traktowany jak para zimna,
+- `force_match` raportuje seans obecny już w `seen_events`.
 
 `main` — reguły utrwalania, najbardziej podatne na błąd:
 
 - nieudana wysyłka nie dopisuje `seen_events`,
-- nieudana wysyłka blokuje aktualizację `http_cache` w całym cyklu,
-- błąd pobrania nie aktualizuje `http_cache` tej pary,
 - powtórzony cykl po nieudanej wysyłce dostarcza tego samego dropa,
-- nieudane pobranie **usuwa** wpis `http_cache`, więc kolejny cykl pyta bezwarunkowo,
 - awaria listy dat kina zostawia wszystkie jego pary zimne,
-- obecność zimnej pary wymusza pobranie bezwarunkowe, bez `If-Modified-Since`,
+- para z jedną trwale błędną datą **ociepla się mimo to**,
+- istniejące `seen_events` przeżywają dopisanie nowego dropa,
 - `--dry-run` nie modyfikuje pliku stanu w żadnej sekcji.
 
-`api` — parsowanie fixture'a, obsługa `304`, backoff po `429`.
+Każda z tych reguł musi być zweryfikowana **mutacyjnie** — zepsuj odpowiadającą jej linię i sprawdź,
+czy któryś test faktycznie się czerwieni. W tym projekcie trzykrotnie trafił się test, który
+wyglądał na pokrycie, a nie mógł zawieść.
+
+`api` — parsowanie fixture'a, backoff po `429`.
 
 `notifier` — grupowanie po (film × kino), przycięcie listy do 15 pozycji i wiersz `…i N więcej`,
 mapa slug → etykieta, odmiana liczebnika, formatowanie daty w Europe/Warsaw.
@@ -487,20 +468,14 @@ daje identyczne bajty niezależnie od kolejności wstawiania kluczy).
 4. Test realnej wysyłki flagą `--force-send`, która pomija sprawdzenie `seen_events` dla jednego
    wpisu. Wyczyszczenie stanu **nie** nadaje się do tego testu — zrobiłoby z wpisu wpis nowy, więc
    cykl z definicji by zamilkł.
-5. Symulacja awarii: podmieniony adres Telegrama, cykl kończy się błędem wysyłki. Weryfikacja, że
-   `http_cache` nie drgnął i że kolejny poprawny cykl dostarcza dropa.
+5. Symulacja awarii: zły token Telegrama, cykl kończy się błędem wysyłki. Weryfikacja, że
+   `seen_events` nie drgnęły i że kolejny poprawny cykl dostarcza dropa.
 6. `workflow_dispatch` w GitHub Actions — ręczne uruchomienie kończy się sukcesem i commituje stan
    na gałąź `state`. Drugie uruchomienie bez zmian repertuaru **nie** tworzy commita.
 7. Obserwacja przez dobę: brak fałszywych powiadomień przy niezmienionym repertuarze.
 8. **Po dobie działania dopisanie drugiego wpisu `watch`** dla filmu już granego w tym samym kinie.
-   To jedyna ścieżka, o której spec sam mówi, że pierwsze uruchomienie jej nie ujawni: `http_cache`
-   jest już pełny, więc bez wymuszonego pobrania bezwarunkowego nowa para ociepliłaby się z pustym
-   baseline. Oczekiwane: cykl milczy, a kolejna zmiana repertuaru nie wywołuje lawiny starych
-   seansów.
-9. **Data, która zawiodła podczas zimnego startu.** Lokalnie, z podmienionym adresem jednej daty
-   tak, by zwracała błąd. Oczekiwane: para i tak się ociepla, wpis tej daty znika z `http_cache`,
-   a po przywróceniu poprawnego adresu jej seanse zostają zgłoszone **dokładnie raz**. To jedyna
-   ścieżka, w której narzędzie świadomie wysyła zawyżone powiadomienie.
+   Oczekiwane: cykl milczy (zimny start nowej pary), a kolejna zmiana repertuaru nie wywołuje lawiny
+   starych seansów.
 
 ## Otwarte kwestie
 
