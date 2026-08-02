@@ -1,11 +1,18 @@
+import argparse
 import logging
+import os
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ccdrop import api as api_module
+from ccdrop.api import ApiClient, CinemaCityApi
+from ccdrop.config import load_config
 from ccdrop.detector import cold_cinemas, detect, entry_cinemas
 from ccdrop.models import Config, State, WatchState
-from ccdrop.notifier import format_drop
+from ccdrop.notifier import TelegramNotifier, format_drop
+from ccdrop.state import load_state, prune, save_state
 
 log = logging.getLogger("ccdrop")
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -89,3 +96,58 @@ def run_cycle(config, state, api, notifier, today, dry_run=False, force_match=No
         new_cache.pop(key, None)
 
     return State(watch_state=new_watch, http_cache=new_cache, cinema_names=cinema_names)
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="ccdrop")
+    parser.add_argument("--config", type=Path, default=Path("config.yaml"))
+    parser.add_argument("--state-dir", type=Path, default=Path("state"))
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--force-send", default=None)
+    parser.add_argument("--verbose", action="store_true")
+    return parser.parse_args(argv)
+
+
+def build_notifier(dry_run: bool):
+    if dry_run:
+        return None
+    try:
+        return TelegramNotifier(
+            os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"]
+        )
+    except KeyError as missing:
+        raise SystemExit(f"Brak zmiennej środowiskowej {missing}")
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(message)s",
+    )
+    logging.getLogger("urllib3").setLevel(logging.INFO)
+
+    config = load_config(args.config)
+    if args.force_send and not any(e.match == args.force_send for e in config.watch):
+        log.warning("--force-send %s nie pasuje do żadnego wpisu watch", args.force_send)
+
+    state = load_state(args.state_dir)
+    today = today_in_warsaw()
+
+    updated = run_cycle(
+        config,
+        state,
+        CinemaCityApi(ApiClient()),
+        build_notifier(args.dry_run),
+        today,
+        dry_run=args.dry_run,
+        force_match=args.force_send,
+    )
+
+    if not args.dry_run:
+        save_state(args.state_dir, prune(updated, today))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
