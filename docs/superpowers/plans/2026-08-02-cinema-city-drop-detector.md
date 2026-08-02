@@ -1949,7 +1949,7 @@ wyłącznie przy braku porażek wysyłki; `dry_run` zwraca stan wejściowy nietk
 - [ ] **Step 4: Uruchom testy**
 
 Run: `.venv/bin/pytest tests/test_main_persistence.py -v`
-Expected: 17 passed
+Expected: 20 passed
 
 - [ ] **Step 5: Uruchom cały zestaw**
 
@@ -2086,7 +2086,7 @@ ccdrop = "ccdrop.main:main"
 - [ ] **Step 4: Uruchom testy**
 
 Run: `.venv/bin/pytest tests/test_cli.py -v`
-Expected: 3 passed
+Expected: 4 passed
 
 - [ ] **Step 5: Commit**
 

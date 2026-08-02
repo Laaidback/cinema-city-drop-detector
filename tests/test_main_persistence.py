@@ -131,3 +131,29 @@ def test_force_send_keeps_existing_seen_events(fake_world):
     )
 
     assert "9" in state.watch_state["Backrooms|1090"].seen_events
+
+
+def test_failed_fetch_deletes_cache_even_when_send_fails(fake_world):
+    world = fake_world(
+        warm=True, events=[("1", "2026-08-15")], send_ok=False, failed_dates=["2026-08-16"]
+    )
+    world.state.http_cache["1090|2026-08-16"] = "stary"
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02")
+
+    assert "1090|2026-08-16" not in state.http_cache
+
+
+def test_force_send_reports_event_already_in_seen_events(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    world.state.watch_state["Backrooms|1090"].seen_events["1"] = "2026-08-15"
+    run_cycle(CONFIG, world.state, world.api, world.notifier, "2026-08-02", force_match="Backrooms")
+
+    assert world.notifier.sent != []
+
+
+def test_unrelated_cache_entries_survive(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    world.state.http_cache["1064|2026-09-01"] = "obcy"
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02")
+
+    assert state.http_cache["1064|2026-09-01"] == "obcy"
