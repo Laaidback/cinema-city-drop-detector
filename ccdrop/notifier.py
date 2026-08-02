@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import requests
+
 from ccdrop.models import Drop
 
 MAX_ROWS = 15
@@ -42,3 +44,19 @@ def format_drop(drop: Drop, cinema_names: dict[str, str]) -> str:
         lines.append(f"  …i {hidden} więcej")
 
     return "\n".join(lines)
+
+
+class TelegramNotifier:
+    def __init__(self, token: str, chat_id: str, session=None):
+        self.token = token
+        self.chat_id = chat_id
+        self.session = session or requests.Session()
+
+    def send(self, text: str) -> bool:
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        payload = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+        try:
+            response = self.session.post(url, json=payload, timeout=30)
+        except requests.RequestException:
+            return False
+        return response.status_code == 200
