@@ -346,9 +346,10 @@ Ustalenia formatu:
   `5+ nowych seansów`, z wyjątkiem końcówek 12–14, które biorą formę dopełniaczową.
 - **Nazwa kina** pochodzi z `cinema_names`. Gdy krok 2 przepływu zawiedzie i wpisu brakuje,
   pokazujemy sam numer kina. Powiadomienie musi wyjść nawet bez ładnej nazwy.
-- **Strefa Europe/Warsaw** wszędzie — zarówno w wyświetlanych godzinach, jak i w liczeniu
-  `dziś + horizon_days`. Runner GitHub Actions chodzi w UTC, więc bez jawnej strefy skan blisko
-  północy obejmowałby zły zakres dat.
+- **Strefa Europe/Warsaw wyłącznie przy liczeniu `dziś + horizon_days`.** Runner GitHub Actions
+  chodzi w UTC, więc bez jawnej strefy skan blisko północy obejmowałby zły zakres dat.
+  Godzin seansów **nie konwertujemy** — `eventDateTime` z API jest już czasem lokalnym kina,
+  więc nałożenie na nie strefy przesunęłoby każdy seans.
 - Skróty dni tygodnia z własnej mapy, nie z `locale` — locale bywa niedostępne w kontenerze CI.
 
 ## Uruchamianie
