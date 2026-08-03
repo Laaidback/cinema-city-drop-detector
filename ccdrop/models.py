@@ -46,3 +46,4 @@ class WatchState:
 class State:
     watch_state: dict[str, WatchState] = field(default_factory=dict)
     cinema_names: dict[str, str] = field(default_factory=dict)
+    drop_log: list[dict] = field(default_factory=list)

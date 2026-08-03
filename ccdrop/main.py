@@ -10,7 +10,7 @@ from ccdrop import api as api_module
 from ccdrop.api import ApiClient, CinemaCityApi
 from ccdrop.config import load_config
 from ccdrop.detector import detect
-from ccdrop.models import Config, State, WatchState
+from ccdrop.models import Config, Drop, State, WatchState
 from ccdrop.notifier import TelegramNotifier, format_drop
 from ccdrop.state import load_state, prune, save_state
 
@@ -18,15 +18,20 @@ log = logging.getLogger("ccdrop")
 WARSAW = ZoneInfo("Europe/Warsaw")
 
 
-def today_in_warsaw() -> str:
-    return datetime.now(WARSAW).date().isoformat()
-
-
 def horizon_date(today: str, days: int) -> str:
     return (date.fromisoformat(today) + timedelta(days=days)).isoformat()
 
 
-def run_cycle(config, state, api, notifier, today, dry_run=False, force_match=None):
+def drop_log_entry(drop: Drop, now: datetime) -> dict:
+    return {
+        "detected_at": now.astimezone(WARSAW).isoformat(timespec="seconds"),
+        "film": drop.film_name,
+        "cinema": drop.cinema_id,
+        "count": len(drop.events),
+    }
+
+
+def run_cycle(config, state, api, notifier, today, now, dry_run=False, force_match=None):
     until = horizon_date(today, config.horizon_days)
     names = api.fetch_cinema_names(until)
     cinema_names = {**state.cinema_names, **names}
@@ -49,6 +54,7 @@ def run_cycle(config, state, api, notifier, today, dry_run=False, force_match=No
     log.info("Pobrano %d seansów, wykryto %d grup", len(fetched_events), len(outcome.drops))
 
     delivered: dict[str, dict[str, str]] = {}
+    logged: list[dict] = []
     for drop in outcome.drops:
         text = format_drop(drop, cinema_names)
         if dry_run:
@@ -59,6 +65,7 @@ def run_cycle(config, state, api, notifier, today, dry_run=False, force_match=No
             delivered.setdefault(drop.watch_key, {}).update(
                 {e.id: e.business_day for e in drop.events}
             )
+            logged.append(drop_log_entry(drop, now))
 
     if dry_run:
         return state
@@ -71,7 +78,11 @@ def run_cycle(config, state, api, notifier, today, dry_run=False, force_match=No
     for key, baseline in outcome.baselines.items():
         new_watch[key] = WatchState(warm=True, seen_events=dict(baseline))
 
-    return State(watch_state=new_watch, cinema_names=cinema_names)
+    return State(
+        watch_state=new_watch,
+        cinema_names=cinema_names,
+        drop_log=[*state.drop_log, *logged],
+    )
 
 
 def parse_args(argv):
@@ -108,7 +119,8 @@ def main(argv=None):
         log.warning("--force-send %s nie pasuje do żadnego wpisu watch", args.force_send)
 
     state = load_state(args.state_dir)
-    today = today_in_warsaw()
+    now = datetime.now(WARSAW)
+    today = now.date().isoformat()
 
     updated = run_cycle(
         config,
@@ -116,6 +128,7 @@ def main(argv=None):
         CinemaCityApi(ApiClient()),
         build_notifier(args.dry_run),
         today,
+        now,
         dry_run=args.dry_run,
         force_match=args.force_send,
     )

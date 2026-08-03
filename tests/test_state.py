@@ -37,3 +37,70 @@ def test_prune_drops_past_events():
     )
 
     assert prune(state, today="2026-08-02").watch_state["A|1"].seen_events == {"new": "2026-09-01"}
+
+
+def test_roundtrip_preserves_drop_log(tmp_path):
+    entry = {
+        "detected_at": "2026-08-03T09:01:12+02:00",
+        "film": "Odyseja",
+        "cinema": "1060",
+        "count": 3,
+    }
+    save_state(tmp_path, State(drop_log=[entry]))
+
+    assert load_state(tmp_path).drop_log == [
+        {
+            "detected_at": "2026-08-03T09:01:12+02:00",
+            "film": "Odyseja",
+            "cinema": "1060",
+            "count": 3,
+        }
+    ]
+
+
+def test_file_without_drop_log_loads_empty_drop_log(tmp_path):
+    (tmp_path / "seen.json").write_text(
+        '{"version": 1, "watch_state": {}, "cinema_names": {"1090": "Bonarka"}}'
+    )
+
+    assert load_state(tmp_path).drop_log == []
+
+
+def test_prune_drops_entry_older_than_60_days():
+    entry = {
+        "detected_at": "2026-06-03T09:01:12+02:00",
+        "film": "Odyseja",
+        "cinema": "1060",
+        "count": 3,
+    }
+
+    assert prune(State(drop_log=[entry]), today="2026-08-03").drop_log == []
+
+
+def test_prune_keeps_recent_entry():
+    entry = {
+        "detected_at": "2026-08-01T09:01:12+02:00",
+        "film": "Odyseja",
+        "cinema": "1060",
+        "count": 3,
+    }
+
+    assert prune(State(drop_log=[entry]), today="2026-08-03").drop_log == [
+        {
+            "detected_at": "2026-08-01T09:01:12+02:00",
+            "film": "Odyseja",
+            "cinema": "1060",
+            "count": 3,
+        }
+    ]
+
+
+def test_prune_keeps_entry_exactly_60_days_old():
+    entry = {
+        "detected_at": "2026-06-04T09:01:12+02:00",
+        "film": "Odyseja",
+        "cinema": "1060",
+        "count": 3,
+    }
+
+    assert len(prune(State(drop_log=[entry]), today="2026-08-03").drop_log) == 1
