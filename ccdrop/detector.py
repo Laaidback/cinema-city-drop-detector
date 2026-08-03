@@ -12,7 +12,13 @@ class DetectResult:
 
 
 def watch_key(entry: WatchEntry, cinema_id: str) -> str:
-    return f"{entry.match}|{cinema_id}"
+    if not entry.attributes:
+        return f"{entry.match}|{cinema_id}"
+    return f"{entry.match}|{cinema_id}|{','.join(sorted(entry.attributes))}"
+
+
+def has_required_attributes(entry: WatchEntry, event: Event) -> bool:
+    return all(attribute in event.attribute_ids for attribute in entry.attributes or ())
 
 
 def entry_cinemas(config: Config, entry: WatchEntry) -> tuple[str, ...]:
@@ -36,7 +42,9 @@ def detect(
             matched = [
                 e
                 for e in fetched_events
-                if e.cinema_id == cinema_id and matches(entry.match, e.film_name)
+                if e.cinema_id == cinema_id
+                and matches(entry.match, e.film_name)
+                and has_required_attributes(entry, e)
             ]
 
             if state is None or not state.warm:

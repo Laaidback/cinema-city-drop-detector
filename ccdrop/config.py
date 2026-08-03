@@ -26,7 +26,9 @@ def load_config(path: Path) -> Config:
         for cinema in own_ids or ():
             if cinema not in cinemas:
                 raise ValueError(f"watch/{match}: kino {cinema} spoza globalnej listy cinemas")
-        entries.append(WatchEntry(match=match, cinemas=own_ids))
+        attrs = item.get("attributes")
+        attribute_ids = tuple(str(a) for a in attrs) if attrs else None
+        entries.append(WatchEntry(match=match, cinemas=own_ids, attributes=attribute_ids))
 
     return Config(
         horizon_days=int(raw.get("horizon_days", 90)),

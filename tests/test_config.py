@@ -24,6 +24,31 @@ def test_entry_cinemas_default_to_none(tmp_path):
     assert load_config(path).watch[0].cinemas is None
 
 
+def test_entry_attributes_are_a_tuple(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n    attributes: [imax]\n"
+    )
+
+    assert load_config(path).watch[0].attributes == ("imax",)
+
+
+def test_entry_attributes_default_to_none(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text("horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n")
+
+    assert load_config(path).watch[0].attributes is None
+
+
+def test_empty_attributes_list_becomes_none(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n    attributes: []\n"
+    )
+
+    assert load_config(path).watch[0].attributes is None
+
+
 def test_rejects_empty_watch(tmp_path):
     path = tmp_path / "c.yaml"
     path.write_text("horizon_days: 90\ncinemas: [1090]\nwatch: []\n")

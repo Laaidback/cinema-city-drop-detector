@@ -18,6 +18,7 @@ class Event:
 class WatchEntry:
     match: str
     cinemas: tuple[str, ...] | None = None
+    attributes: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
