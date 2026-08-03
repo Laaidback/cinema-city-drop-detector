@@ -1,4 +1,5 @@
 horizon_days: 90
-cinemas: [1090]
+cinemas: [1060]
 watch:
-  - match: "Obsesja"
+  - match: "Odyseja"
+    attributes: [imax]
