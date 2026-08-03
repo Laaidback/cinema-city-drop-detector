@@ -4,7 +4,7 @@ from ccdrop.state import load_state, prune, save_state
 
 def test_roundtrip_preserves_seen_events(tmp_path):
     state = State(watch_state={"A|1": WatchState(warm=True, seen_events={"1": "2026-08-15"})})
-    save_state(tmp_path, state)
+    save_state(tmp_path, state, today="2026-08-02")
 
     assert load_state(tmp_path).watch_state["A|1"].seen_events == {"1": "2026-08-15"}
 
@@ -22,9 +22,9 @@ def test_corrupted_file_gives_empty_state(tmp_path):
 def test_serialization_is_deterministic(tmp_path):
     first = State(cinema_names={"1090": "Bonarka", "1064": "Zakopianka"})
     second = State(cinema_names={"1064": "Zakopianka", "1090": "Bonarka"})
-    save_state(tmp_path, first)
+    save_state(tmp_path, first, today="2026-08-02")
     first_bytes = (tmp_path / "seen.json").read_bytes()
-    save_state(tmp_path, second)
+    save_state(tmp_path, second, today="2026-08-02")
 
     assert (tmp_path / "seen.json").read_bytes() == first_bytes
 
@@ -46,7 +46,7 @@ def test_roundtrip_preserves_drop_log(tmp_path):
         "cinema": "1060",
         "count": 3,
     }
-    save_state(tmp_path, State(drop_log=[entry]))
+    save_state(tmp_path, State(drop_log=[entry]), today="2026-08-03")
 
     assert load_state(tmp_path).drop_log == [
         {
@@ -104,3 +104,17 @@ def test_prune_keeps_entry_exactly_60_days_old():
     }
 
     assert len(prune(State(drop_log=[entry]), today="2026-08-03").drop_log) == 1
+
+
+def test_save_prunes_past_events(tmp_path):
+    state = State(watch_state={"A|1": WatchState(warm=True, seen_events={"old": "2026-07-01"})})
+    save_state(tmp_path, state, today="2026-08-02")
+
+    assert load_state(tmp_path).watch_state["A|1"].seen_events == {}
+
+
+def test_save_prunes_stale_drop_log(tmp_path):
+    entry = {"detected_at": "2026-05-01T09:00:00+02:00", "film": "X", "cinema": "1", "count": 1}
+    save_state(tmp_path, State(drop_log=[entry]), today="2026-08-03")
+
+    assert load_state(tmp_path).drop_log == []

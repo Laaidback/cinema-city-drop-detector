@@ -12,7 +12,7 @@ from ccdrop.config import load_config
 from ccdrop.detector import detect
 from ccdrop.models import Config, Drop, State, WatchState
 from ccdrop.notifier import TelegramNotifier, format_drop
-from ccdrop.state import load_state, prune, save_state
+from ccdrop.state import load_state, save_state
 
 log = logging.getLogger("ccdrop")
 WARSAW = ZoneInfo("Europe/Warsaw")
@@ -134,7 +134,7 @@ def main(argv=None):
     )
 
     if not args.dry_run:
-        save_state(args.state_dir, prune(updated, today))
+        save_state(args.state_dir, updated, today)
     return 0
 
 

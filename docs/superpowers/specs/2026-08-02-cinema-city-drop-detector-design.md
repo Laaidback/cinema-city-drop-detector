@@ -123,23 +123,36 @@ podejmuje wyłącznie `main`.
 
 ## Model stanu
 
-Plik `state/seen.json`, dwie niezależne sekcje:
+Plik `state/seen.json`, trzy niezależne sekcje:
 
 ```json
 {
   "version": 1,
   "watch_state": {
-    "Backrooms|1090": {
+    "Odyseja|1060|imax": {
       "warm": true,
       "seen_events": { "1600867": "2026-08-15" }
     }
   },
-  "cinema_names": { "1090": "Kraków Bonarka" }
+  "cinema_names": { "1060": "Warszawa - Sadyba" },
+  "drop_log": [
+    { "detected_at": "2026-08-03T09:01:12+02:00", "film": "Odyseja", "cinema": "1060", "count": 3 }
+  ]
 }
 ```
 
-Obie zmieniają się wyłącznie wtedy, gdy zmieni się repertuar. To warunek konieczny, by
-zabezpieczenie „commit tylko przy realnej zmianie" na gałęzi `state` w ogóle działało.
+Każda zmienia się wyłącznie wtedy, gdy zmieni się repertuar. To warunek konieczny, by
+zabezpieczenie „commit tylko przy realnej zmianie" na gałęzi `state` w ogóle działało — dlatego
+w stanie **nie ma** żadnego znacznika ostatniego uruchomienia, choć bywa kuszący.
+
+`drop_log` służy do pomiaru: zapisuje moment wykrycia każdego **dostarczonego** powiadomienia,
+w strefie Europe/Warsaw. Cel jest konkretny — ustalić, o których godzinach Cinema City faktycznie
+publikuje nowe seanse, zamiast zgadywać przy wyborze okna odpytywania. Znacznik musi być
+warszawski, nie UTC; runner chodzi w UTC, więc zapis `07:01Z` zamiast `09:01+02:00` przesunąłby
+cały rozkład o dwie godziny.
+
+Wpis powstaje **po udanej wysyłce**, nie w momencie wykrycia. Inaczej nieudana wysyłka logowałaby
+ten sam drop w każdym kolejnym cyklu i wykrzywiła pomiar.
 
 **Kluczem `watch_state` jest para (wartość `match` × numer kina).** Nie sam wpis `watch` — bo
 dopisanie kina do globalnej listy `cinemas` nie tworzy nowego wpisu, a para (film × nowe kino) jest
@@ -155,8 +168,13 @@ przycinać stan.
 nie udało się pobrać, nie wnosi żadnych seansów do `pobrane_eventy` — przy semantyce „zastąp" jej
 seanse wypadłyby ze stanu i wróciłyby jako fałszywe dropy przy najbliższym udanym pobraniu.
 
-**Przycinanie** przy każdym zapisie: usuwane są wpisy `seen_events` z datą wcześniejszą niż dziś.
-Bez tego plik rośnie bez końca.
+**Przycinanie** dzieje się **wewnątrz `save_state`**, nie przed jego wywołaniem: usuwane są wpisy
+`seen_events` z datą wcześniejszą niż dziś oraz wpisy `drop_log` starsze niż 60 dni. Bez tego plik
+rośnie bez końca.
+
+Umieszczenie przycinania w `save_state` jest celowe. Gdy było osobnym wywołaniem w `main`, usunięcie
+go przechodziło przez cały zestaw testów — nic nie pokrywało `main`. Reguła, o której trzeba
+pamiętać, jest słabsza od reguły, której nie da się pominąć.
 
 ## Przepływ jednego cyklu
 

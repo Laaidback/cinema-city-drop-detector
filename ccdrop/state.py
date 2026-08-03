@@ -40,15 +40,6 @@ def serialize(state: State) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def save_state(state_dir: Path, state: State) -> None:
-    directory = Path(state_dir)
-    directory.mkdir(parents=True, exist_ok=True)
-    target = directory / FILENAME
-    tmp = directory / f"{FILENAME}.tmp"
-    tmp.write_text(serialize(state), encoding="utf-8")
-    tmp.replace(target)
-
-
 def prune(state: State, today: str) -> State:
     watch = {
         key: WatchState(
@@ -60,3 +51,13 @@ def prune(state: State, today: str) -> State:
     oldest = (date.fromisoformat(today) - timedelta(days=DROP_LOG_RETENTION_DAYS)).isoformat()
     drop_log = [entry for entry in state.drop_log if entry["detected_at"][:10] >= oldest]
     return State(watch_state=watch, cinema_names=dict(state.cinema_names), drop_log=drop_log)
+
+
+def save_state(state_dir: Path, state: State, today: str) -> None:
+    directory = Path(state_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / FILENAME
+    tmp = directory / f"{FILENAME}.tmp"
+    tmp.write_text(serialize(prune(state, today)), encoding="utf-8")
+    tmp.replace(target)
+
