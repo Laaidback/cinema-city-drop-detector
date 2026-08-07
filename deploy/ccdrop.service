@@ -10,7 +10,7 @@ Group=ccdrop
 WorkingDirectory=/opt/ccdrop
 EnvironmentFile=/etc/ccdrop/ccdrop.env
 ExecStart=/opt/ccdrop/.venv/bin/python -m ccdrop.main --state-dir /var/lib/ccdrop
-TimeoutStartSec=300
+TimeoutStartSec=120
 
 NoNewPrivileges=true
 PrivateTmp=true

@@ -6,5 +6,6 @@ pojawią się nowe seanse.
 - Co śledzić: `config.yaml`
 - Projekt i uzasadnienia decyzji: `docs/superpowers/specs/`
 - Plan implementacji: `docs/superpowers/plans/`
-- Uruchamianie: GitHub Actions co 5 minut, stan na gałęzi `state`
+- Uruchamianie: GitHub Actions, cron `*/15` (GitHub dostarcza realnie ok. raz na 2 h),
+  stan na gałęzi `state`
 - Wdrożenie na VPS z oknem wokół pełnej godziny: `deploy/README.md`

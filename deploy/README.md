@@ -99,7 +99,20 @@ sudo -u ccdrop /opt/ccdrop/.venv/bin/python -m ccdrop.main \
   --state-dir /var/lib/ccdrop --dry-run
 ```
 
-## 9. Aktualizacja
+## 9. Wyłącz GitHub Actions — obowiązkowe
+
+Gdy VPS zacznie działać, **wyłącz workflow na GitHubie**. Dwie instancje mają osobne pliki stanu,
+więc każda wykryje ten sam drop niezależnie i **obie wyślą powiadomienie** — dostaniesz wszystko
+podwójnie. Do tego runner nadal commitowałby stan na gałąź `state`, co przy braku VPS-a w tej
+gałęzi tylko myli.
+
+W repozytorium: `Actions` → `check` → menu `···` → **Disable workflow**.
+
+Sekcja `schedule` w `config.yaml` sama nie wystarczy. Ucisza runner niemal całkowicie, bo
+nieregularnie dostarczany cron rzadko trafia w sześciominutowe okno — ale „niemal" znaczy, że
+czasem trafi i wyśle duplikat.
+
+## 10. Aktualizacja
 
 ```bash
 git -C /opt/ccdrop pull
@@ -108,7 +121,7 @@ chown -R ccdrop:ccdrop /opt/ccdrop
 systemctl restart ccdrop.timer
 ```
 
-## 10. Wyłączenie
+## 11. Wyłączenie
 
 ```bash
 systemctl disable --now ccdrop.timer
