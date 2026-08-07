@@ -187,7 +187,8 @@ pamiętać, jest słabsza od reguły, której nie da się pominąć.
 4. Dla każdej pary (kino, data): `film-events/...` — pobranie bezwarunkowe, bo warunkowe i tak nie
    działa. Throttle 200 ms między żądaniami.
 5. `detect()` — dopasowanie do wpisów `watch` **oraz** diff. Jedno miejsce, nie dwa.
-6. Wyślij jedną wiadomość na grupę (film × kino).
+6. Wyślij grupę (film × kino) — jedną wiadomość, a gdy treść nie mieści się w limicie Telegrama,
+   kolejne części. Grupa liczy się jako dostarczona dopiero, gdy wyślą się wszystkie części.
 7. Zapisz stan według reguł poniżej.
 
 Przy jednym kinie i 35 granych dniach to 37 żądań na cykl i ok. 650 KB po kompresji.
@@ -316,17 +317,21 @@ wysyłałoby to samo. Nie ocieplarza par zimnych i nie omija reguł utrwalania.
   nd 17.08  17:45  Sala 2 · 4DX      https://tickets.cinema-city.pl/api/order/1600872
 ```
 
-Po przekroczeniu limitu ostatni wiersz przyjmuje postać `…i 12 więcej`.
+Grupa dłuższa niż jedna wiadomość dzieli się na części, a nagłówek dostaje wtedy licznik
+`🎬 Backrooms. Bez wyjścia  (2/3)`. Każda część powtarza nagłówek, więc czyta się ją samodzielnie.
 
-Jedna wiadomość na parę (film × kino). Przy premierze wchodzącej z czterdziestoma seansami naraz
+Jedna grupa na parę (film × kino). Przy premierze wchodzącej z czterdziestoma seansami naraz
 grupowanie jest różnicą między jednym powiadomieniem a czterdziestoma.
 
 Ustalenia formatu:
 
 - **Link jest per seans**, bo `bookingLink` to pole eventu — jeden link na grupę wskazywałby
   losowy seans.
-- **Maksymalnie 15 pozycji** na wiadomość, potem wiersz `…i N więcej`. Telegram tnie wiadomości
-  po 4096 znakach.
+- **Bez ucinania listy** — ukryte seanse to dokładnie ta informacja, po którą sięga czytelnik.
+  Telegram odrzuca wiadomości dłuższe niż 4096 znaków, więc grupa dzieli się na części po
+  3500 znaków; zapas pokrywa polskie znaki wielobajtowe i przyszły wzrost nagłówka. Pojedynczy
+  wiersz nigdy nie pęka między wiadomościami, a licznik w nagłówku podaje sumę dla całej grupy,
+  nie dla części.
 - **Etykiety formatów** pochodzą z `attributeIds`. Identyfikatory są w API pisane małymi literami
   z myślnikami, więc potrzebna jest jawna mapa slug → etykieta; wszystko spoza mapy pomijamy jako
   szum:

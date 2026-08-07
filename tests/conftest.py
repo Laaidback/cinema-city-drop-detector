@@ -43,12 +43,15 @@ class FakeApi:
 
 
 class FakeNotifier:
-    def __init__(self, ok):
+    def __init__(self, ok, fail_from=None):
         self.ok = ok
+        self.fail_from = fail_from
         self.sent = []
 
     def send(self, text):
         self.sent.append(text)
+        if self.fail_from is not None and len(self.sent) >= self.fail_from:
+            return False
         return self.ok
 
 
@@ -61,7 +64,7 @@ class World:
 
 @pytest.fixture
 def fake_world():
-    def build(warm, events=(), send_ok=True, failed_dates=(), dates_fail=False):
+    def build(warm, events=(), send_ok=True, failed_dates=(), dates_fail=False, fail_from=None):
         events_by_date = {}
         for event_id, business_day in events:
             events_by_date.setdefault(business_day, []).append((event_id, business_day))
@@ -71,7 +74,7 @@ def fake_world():
         return World(
             state=state,
             api=FakeApi(events_by_date, failed_dates, dates_fail),
-            notifier=FakeNotifier(send_ok),
+            notifier=FakeNotifier(send_ok, fail_from),
         )
 
     return build

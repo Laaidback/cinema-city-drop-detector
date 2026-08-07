@@ -31,6 +31,13 @@ def drop_log_entry(drop: Drop, now: datetime) -> dict:
     }
 
 
+def send_parts(notifier, parts: list[str]) -> bool:
+    for part in parts:
+        if not notifier.send(part):
+            return False
+    return True
+
+
 def run_cycle(config, state, api, notifier, today, now, dry_run=False, force_match=None):
     until = horizon_date(today, config.horizon_days)
     names = api.fetch_cinema_names(until)
@@ -56,12 +63,13 @@ def run_cycle(config, state, api, notifier, today, now, dry_run=False, force_mat
     delivered: dict[str, dict[str, str]] = {}
     logged: list[dict] = []
     for drop in outcome.drops:
-        text = format_drop(drop, cinema_names)
+        parts = format_drop(drop, cinema_names)
         if dry_run:
-            print(text)
-            print()
+            for part in parts:
+                print(part)
+                print()
             continue
-        if notifier.send(text):
+        if send_parts(notifier, parts):
             delivered.setdefault(drop.watch_key, {}).update(
                 {e.id: e.business_day for e in drop.events}
             )

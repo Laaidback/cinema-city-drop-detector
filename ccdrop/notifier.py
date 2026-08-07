@@ -2,9 +2,9 @@ from datetime import datetime
 
 import requests
 
-from ccdrop.models import Drop
+from ccdrop.models import Drop, Event
 
-MAX_ROWS = 15
+BUDGET = 3500
 WEEKDAYS = ("pn", "wt", "śr", "cz", "pt", "sb", "nd")
 ATTRIBUTE_LABELS = {
     "imax": "IMAX",
@@ -24,26 +24,52 @@ def plural_screenings(count: int) -> str:
     return f"{count} nowych seansów"
 
 
-def format_drop(drop: Drop, cinema_names: dict[str, str]) -> str:
+def event_row(event: Event) -> str:
+    moment = datetime.fromisoformat(event.date_time)
+    stamp = f"{WEEKDAYS[moment.weekday()]} {moment:%d.%m}  {moment:%H:%M}"
+    labels = [ATTRIBUTE_LABELS[a] for a in event.attribute_ids if a in ATTRIBUTE_LABELS]
+    room = " · ".join([event.auditorium, *labels])
+    return f"  {stamp}  {room}  {event.booking_link}"
+
+
+def header(drop: Drop, cinema: str, part: int, parts: int) -> str:
+    marker = f"  ({part}/{parts})" if parts > 1 else ""
+    return "\n".join(
+        [
+            f"🎬 {drop.film_name}{marker}",
+            f"📍 {cinema} · {plural_screenings(len(drop.events))}",
+            "",
+        ]
+    )
+
+
+def split_rows(rows: list[str], header_length: int) -> list[list[str]]:
+    groups: list[list[str]] = [[]]
+    used = header_length
+    for row in rows:
+        if groups[-1] and used + len(row) + 1 > BUDGET:
+            groups.append([])
+            used = header_length
+        groups[-1].append(row)
+        used += len(row) + 1
+    return groups
+
+
+def format_drop(drop: Drop, cinema_names: dict[str, str]) -> list[str]:
     cinema = cinema_names.get(drop.cinema_id, drop.cinema_id)
-    lines = [
-        f"🎬 {drop.film_name}",
-        f"📍 {cinema} · {plural_screenings(len(drop.events))}",
-        "",
+    rows = [event_row(event) for event in drop.events]
+
+    parts = 1
+    while True:
+        groups = split_rows(rows, len(header(drop, cinema, parts, parts)))
+        if len(groups) <= parts:
+            break
+        parts = len(groups)
+
+    return [
+        "\n".join([header(drop, cinema, index, parts), *group])
+        for index, group in enumerate(groups, start=1)
     ]
-
-    for event in drop.events[:MAX_ROWS]:
-        moment = datetime.fromisoformat(event.date_time)
-        stamp = f"{WEEKDAYS[moment.weekday()]} {moment:%d.%m}  {moment:%H:%M}"
-        labels = [ATTRIBUTE_LABELS[a] for a in event.attribute_ids if a in ATTRIBUTE_LABELS]
-        room = " · ".join([event.auditorium, *labels])
-        lines.append(f"  {stamp}  {room}  {event.booking_link}")
-
-    hidden = len(drop.events) - MAX_ROWS
-    if hidden > 0:
-        lines.append(f"  …i {hidden} więcej")
-
-    return "\n".join(lines)
 
 
 class TelegramNotifier:

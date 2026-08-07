@@ -1,3 +1,5 @@
+import re
+
 from ccdrop.models import Drop, Event
 from ccdrop.notifier import format_drop, plural_screenings
 
@@ -25,6 +27,10 @@ def drop_with(events):
     )
 
 
+def many_events(count):
+    return [event(str(i), time=f"{i % 24:02d}:00") for i in range(count)]
+
+
 def test_singular_form():
     assert plural_screenings(1) == "1 nowy seans"
 
@@ -42,37 +48,84 @@ def test_teens_take_genitive():
 
 
 def test_header_uses_cinema_name():
-    text = format_drop(drop_with([event("1")]), {"1090": "Kraków Bonarka"})
+    parts = format_drop(drop_with([event("1")]), {"1090": "Kraków Bonarka"})
 
-    assert "Kraków Bonarka" in text
+    assert "Kraków Bonarka" in parts[0]
 
 
 def test_header_falls_back_to_cinema_id():
-    text = format_drop(drop_with([event("1")]), {})
+    parts = format_drop(drop_with([event("1")]), {})
 
-    assert "1090" in text
+    assert "1090" in parts[0]
 
 
 def test_known_attribute_is_labelled():
-    text = format_drop(drop_with([event("1", attrs=("dolby-cinema",))]), {})
+    parts = format_drop(drop_with([event("1", attrs=("dolby-cinema",))]), {})
 
-    assert "Dolby Cinema" in text
+    assert "Dolby Cinema" in parts[0]
 
 
 def test_unknown_attribute_is_dropped():
-    text = format_drop(drop_with([event("1", attrs=("subbed",))]), {})
+    parts = format_drop(drop_with([event("1", attrs=("subbed",))]), {})
 
-    assert "subbed" not in text
+    assert "subbed" not in parts[0]
 
 
 def test_weekday_is_polish_abbreviation():
-    text = format_drop(drop_with([event("1", day="2026-08-15")]), {})
+    parts = format_drop(drop_with([event("1", day="2026-08-15")]), {})
 
-    assert "sb 15.08" in text
+    assert "sb 15.08" in parts[0]
 
 
-def test_list_is_truncated_after_fifteen():
-    events = [event(str(i), time=f"{i % 24:02d}:00") for i in range(20)]
-    text = format_drop(drop_with(events), {})
+def test_short_drop_produces_one_part():
+    parts = format_drop(drop_with(many_events(3)), {})
 
-    assert "…i 5 więcej" in text
+    assert len(parts) == 1
+
+
+def test_single_part_carries_no_counter():
+    parts = format_drop(drop_with(many_events(3)), {})
+
+    assert "(1/1)" not in parts[0]
+
+
+def test_long_drop_produces_several_parts():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert len(parts) > 1
+
+
+def test_parts_carry_every_screening_exactly_once():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert re.findall(r"order/(\d+)", "\n".join(parts)) == [str(i) for i in range(120)]
+
+
+def test_no_part_exceeds_budget():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert max(len(part) for part in parts) <= 3500
+
+
+def test_every_part_repeats_film_name():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert all("Backrooms. Bez wyjścia" in part for part in parts)
+
+
+def test_later_part_is_numbered():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert f"(2/{len(parts)})" in parts[1]
+
+
+def test_later_part_header_counts_whole_drop():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert "120 nowych seansów" in parts[1]
+
+
+def test_no_part_announces_hidden_screenings():
+    parts = format_drop(drop_with(many_events(120)), {})
+
+    assert "więcej" not in "\n".join(parts)

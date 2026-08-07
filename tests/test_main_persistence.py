@@ -6,6 +6,7 @@ from ccdrop.models import Config, WatchEntry
 
 CONFIG = Config(horizon_days=90, cinemas=("1090",), watch=(WatchEntry(match="Backrooms"),))
 NOW = datetime(2026, 8, 3, 9, 1, 12, tzinfo=ZoneInfo("Europe/Warsaw"))
+MANY = [(str(i), "2026-08-15") for i in range(120)]
 
 
 def test_failed_send_does_not_record_seen_events(fake_world):
@@ -222,6 +223,48 @@ def test_cold_pair_appends_no_drop_log_entry(fake_world):
     state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
 
     assert state.drop_log == []
+
+
+def test_multi_part_drop_sends_more_than_one_message(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True)
+    run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert len(world.notifier.sent) > 1
+
+
+def test_multi_part_drop_records_every_seen_event(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True)
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert state.watch_state["Backrooms|1090"].seen_events == dict(MANY)
+
+
+def test_multi_part_drop_appends_one_drop_log_entry(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True)
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert len(state.drop_log) == 1
+
+
+def test_failed_second_part_records_no_seen_events(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True, fail_from=2)
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert state.watch_state["Backrooms|1090"].seen_events == {}
+
+
+def test_failed_second_part_appends_no_drop_log_entry(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True, fail_from=2)
+    state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert state.drop_log == []
+
+
+def test_failed_second_part_leaves_later_parts_unsent(fake_world):
+    world = fake_world(warm=True, events=MANY, send_ok=True, fail_from=2)
+    run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
+
+    assert len(world.notifier.sent) == 2
 
 
 def test_existing_drop_log_entries_survive_new_drop(fake_world):
