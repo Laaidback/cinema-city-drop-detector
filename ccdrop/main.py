@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -16,6 +17,7 @@ from ccdrop.state import load_state, save_state
 
 log = logging.getLogger("ccdrop")
 WARSAW = ZoneInfo("Europe/Warsaw")
+PART_INTERVAL_SECONDS = 1.2
 
 
 def horizon_date(today: str, days: int) -> str:
@@ -31,8 +33,10 @@ def drop_log_entry(drop: Drop, now: datetime) -> dict:
     }
 
 
-def send_parts(notifier, parts: list[str]) -> bool:
-    for part in parts:
+def send_parts(notifier, parts: list[str], sleep=time.sleep) -> bool:
+    for index, part in enumerate(parts):
+        if index:
+            sleep(PART_INTERVAL_SECONDS)
         if not notifier.send(part):
             return False
     return True

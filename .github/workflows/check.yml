@@ -2,7 +2,10 @@ name: check
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # GitHub dławi zaplanowane workflowy: przy "*/5" dostarczał realnie ok. 1 uruchomienia
+    # na 2 h. Nadmiar kolejkował się i był anulowany przez concurrency, generując maile
+    # o rzekomych porażkach. Prośba o mniej to ta sama częstotliwość, mniej szumu.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 concurrency:

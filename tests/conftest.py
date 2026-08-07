@@ -78,3 +78,8 @@ def fake_world():
         )
 
     return build
+
+
+@pytest.fixture(autouse=True)
+def instant_part_delay(monkeypatch):
+    monkeypatch.setattr("ccdrop.main.PART_INTERVAL_SECONDS", 0)

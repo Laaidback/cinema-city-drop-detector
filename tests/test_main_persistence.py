@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-from ccdrop.main import run_cycle
+from ccdrop.main import run_cycle, send_parts
 from ccdrop.models import Config, WatchEntry
 
 CONFIG = Config(horizon_days=90, cinemas=("1090",), watch=(WatchEntry(match="Backrooms"),))
@@ -280,3 +280,27 @@ def test_existing_drop_log_entries_survive_new_drop(fake_world):
     state = run_cycle(CONFIG, world.state, world.api, world.notifier, today="2026-08-02", now=NOW)
 
     assert state.drop_log[0]["film"] == "Odyseja"
+
+
+def test_single_part_is_not_delayed():
+    delays = []
+    notifier = type("N", (), {"send": lambda self, text: True})()
+    send_parts(notifier, ["jedna"], sleep=delays.append)
+
+    assert delays == []
+
+
+def test_parts_are_spaced_apart():
+    delays = []
+    notifier = type("N", (), {"send": lambda self, text: True})()
+    send_parts(notifier, ["a", "b", "c"], sleep=delays.append)
+
+    assert len(delays) == 2
+
+
+def test_no_delay_after_failed_part():
+    delays = []
+    notifier = type("N", (), {"send": lambda self, text: False})()
+    send_parts(notifier, ["a", "b", "c"], sleep=delays.append)
+
+    assert delays == []
