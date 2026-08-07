@@ -22,10 +22,18 @@ class WatchEntry:
 
 
 @dataclass(frozen=True)
+class Schedule:
+    hours: tuple[int, int]
+    before: int = 0
+    after: int = 0
+
+
+@dataclass(frozen=True)
 class Config:
     horizon_days: int
     cinemas: tuple[str, ...]
     watch: tuple[WatchEntry, ...]
+    schedule: Schedule | None = None
 
 
 @dataclass(frozen=True)

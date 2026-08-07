@@ -1,0 +1,11 @@
+[Unit]
+Description=Uruchamia ccdrop na początku każdej minuty
+
+[Timer]
+OnCalendar=*:*:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+
+[Install]
+WantedBy=timers.target

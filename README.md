@@ -7,3 +7,4 @@ pojawią się nowe seanse.
 - Projekt i uzasadnienia decyzji: `docs/superpowers/specs/`
 - Plan implementacji: `docs/superpowers/plans/`
 - Uruchamianie: GitHub Actions co 5 minut, stan na gałęzi `state`
+- Wdrożenie na VPS z oknem wokół pełnej godziny: `deploy/README.md`

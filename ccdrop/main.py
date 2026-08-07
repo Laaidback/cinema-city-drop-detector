@@ -5,7 +5,6 @@ import sys
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from ccdrop import api as api_module
 from ccdrop.api import ApiClient, CinemaCityApi
@@ -13,11 +12,15 @@ from ccdrop.config import load_config
 from ccdrop.detector import detect
 from ccdrop.models import Config, Drop, State, WatchState
 from ccdrop.notifier import TelegramNotifier, format_drop
+from ccdrop.schedule import WARSAW, in_window
 from ccdrop.state import load_state, save_state
 
 log = logging.getLogger("ccdrop")
-WARSAW = ZoneInfo("Europe/Warsaw")
 PART_INTERVAL_SECONDS = 1.2
+
+
+def current_time() -> datetime:
+    return datetime.now(WARSAW)
 
 
 def horizon_date(today: str, days: int) -> str:
@@ -127,11 +130,15 @@ def main(argv=None):
     logging.getLogger("urllib3").setLevel(logging.INFO)
 
     config = load_config(args.config)
+    now = current_time()
+    if config.schedule and not in_window(config.schedule, now):
+        log.info("%s poza oknem harmonogramu, cykl pominięty", now.strftime("%H:%M"))
+        return 0
+
     if args.force_send and not any(e.match == args.force_send for e in config.watch):
         log.warning("--force-send %s nie pasuje do żadnego wpisu watch", args.force_send)
 
     state = load_state(args.state_dir)
-    now = datetime.now(WARSAW)
     today = now.date().isoformat()
 
     updated = run_cycle(

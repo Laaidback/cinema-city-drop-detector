@@ -1,0 +1,33 @@
+[Unit]
+Description=Cinema City drop detector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ccdrop
+Group=ccdrop
+WorkingDirectory=/opt/ccdrop
+EnvironmentFile=/etc/ccdrop/ccdrop.env
+ExecStart=/opt/ccdrop/.venv/bin/python -m ccdrop.main --state-dir /var/lib/ccdrop
+TimeoutStartSec=300
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ccdrop
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

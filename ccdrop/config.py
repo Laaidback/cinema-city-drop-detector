@@ -2,7 +2,36 @@ from pathlib import Path
 
 import yaml
 
-from ccdrop.models import Config, WatchEntry
+from ccdrop.models import Config, Schedule, WatchEntry
+
+MAX_MARGIN_SUM = 59
+
+
+def parse_schedule(raw) -> Schedule | None:
+    if not raw:
+        return None
+
+    hours = raw.get("hours")
+    if not isinstance(hours, list) or len(hours) != 2:
+        raise ValueError("schedule/hours: wymagane dokładnie dwie godziny [start, koniec]")
+    if not all(isinstance(hour, int) and 0 <= hour <= 23 for hour in hours):
+        raise ValueError("schedule/hours: godziny muszą być liczbami z zakresu 0-23")
+    start, end = hours
+    if start > end:
+        raise ValueError("schedule/hours: start nie może być późniejszy niż koniec")
+
+    before = raw.get("before", 0)
+    after = raw.get("after", 0)
+    if not isinstance(before, int) or before < 0:
+        raise ValueError("schedule/before: wymagana liczba całkowita nieujemna")
+    if not isinstance(after, int) or after < 0:
+        raise ValueError("schedule/after: wymagana liczba całkowita nieujemna")
+    if before + after >= MAX_MARGIN_SUM:
+        raise ValueError(
+            "schedule: before + after musi być mniejsze niż 59, inaczej okna nachodzą na siebie"
+        )
+
+    return Schedule(hours=(start, end), before=before, after=after)
 
 
 def load_config(path: Path) -> Config:
@@ -34,4 +63,5 @@ def load_config(path: Path) -> Config:
         horizon_days=int(raw.get("horizon_days", 90)),
         cinemas=cinemas,
         watch=tuple(entries),
+        schedule=parse_schedule(raw.get("schedule")),
     )
