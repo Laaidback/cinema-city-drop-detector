@@ -1,6 +1,8 @@
 """Wypisuje rozkład godzin, w których wykryto nowe seanse.
 
 Czyta drop_log ze stanu i pokazuje, o których porach kina publikują repertuar.
+Wpisy obserwowane bez powiadomienia (`notify: false`) liczone są osobno — jest ich
+zwykle o rzędy wielkości więcej, więc zmieszane zniekształciłyby obraz dostarczeń.
 Wynik decyduje, czy zawęzić odpytywanie do okna wokół pełnej godziny.
 """
 
@@ -9,19 +11,24 @@ import json
 import sys
 from pathlib import Path
 
-if __name__ == "__main__":
-    state_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("state")
-    entries = json.loads((state_dir / "seen.json").read_text(encoding="utf-8")).get("drop_log", [])
+FILM_LIMIT = 15
 
+
+def was_notified(entry):
+    return entry.get("notified", True)
+
+
+def report(title, entries):
     if not entries:
-        sys.exit("Rejestr pusty — żaden drop nie został jeszcze dostarczony.")
+        print(f"{title}: brak\n")
+        return
 
     hours = collections.Counter(e["detected_at"][11:13] for e in entries)
     minutes = collections.Counter(int(e["detected_at"][14:16]) for e in entries)
     films = collections.Counter(e["film"] for e in entries)
     seansow = sum(e["count"] for e in entries)
 
-    print(f"dropów: {len(entries)}, seansów łącznie: {seansow}")
+    print(f"{title}: {len(entries)}, seansów łącznie: {seansow}")
     print(f"zakres: {min(e['detected_at'] for e in entries)[:16]}"
           f" .. {max(e['detected_at'] for e in entries)[:16]}\n")
 
@@ -36,5 +43,19 @@ if __name__ == "__main__":
           f" ({near_hour * 100 // len(entries)}%)")
 
     print("\nfilmy:")
-    for name, n in films.most_common():
+    for name, n in films.most_common(FILM_LIMIT):
         print(f"  {n:3}x  {name}")
+    if len(films) > FILM_LIMIT:
+        print(f"  ... i {len(films) - FILM_LIMIT} innych")
+    print()
+
+
+if __name__ == "__main__":
+    state_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("state")
+    entries = json.loads((state_dir / "seen.json").read_text(encoding="utf-8")).get("drop_log", [])
+
+    if not entries:
+        sys.exit("Rejestr pusty — żaden drop nie został jeszcze wykryty.")
+
+    report("dropy z powiadomieniem", [e for e in entries if was_notified(e)])
+    report("obserwacje bez powiadomienia", [e for e in entries if not was_notified(e)])

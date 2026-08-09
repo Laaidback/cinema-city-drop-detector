@@ -67,7 +67,12 @@ def load_config(path: Path) -> Config:
                 raise ValueError(f"watch/{match}: kino {cinema} spoza globalnej listy cinemas")
         attrs = item.get("attributes")
         attribute_ids = tuple(str(a) for a in attrs) if attrs else None
-        entries.append(WatchEntry(match=match, cinemas=own_ids, attributes=attribute_ids))
+        notify = item.get("notify", True)
+        if not isinstance(notify, bool):
+            raise ValueError(f"watch/{match}: notify wymaga wartości true albo false")
+        entries.append(
+            WatchEntry(match=match, cinemas=own_ids, attributes=attribute_ids, notify=notify)
+        )
 
     return Config(
         horizon_days=int(raw.get("horizon_days", 90)),

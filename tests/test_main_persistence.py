@@ -2,11 +2,27 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from ccdrop.main import run_cycle, send_parts
-from ccdrop.models import Config, WatchEntry
+from ccdrop.models import Config, WatchEntry, WatchState
 
 CONFIG = Config(horizon_days=90, cinemas=("cc:1090",), watch=(WatchEntry(match="Backrooms"),))
+SILENT_CONFIG = Config(
+    horizon_days=90,
+    cinemas=("cc:1090",),
+    watch=(WatchEntry(match="Backrooms", notify=False),),
+)
+MIXED_CONFIG = Config(
+    horizon_days=90,
+    cinemas=("cc:1090",),
+    watch=(WatchEntry(match="Backrooms"), WatchEntry(match="/.*/", notify=False)),
+)
+CATCH_ALL_KEY = "/.*/|cc:1090"
 NOW = datetime(2026, 8, 3, 9, 1, 12, tzinfo=ZoneInfo("Europe/Warsaw"))
 MANY = [(str(i), "2026-08-15") for i in range(120)]
+
+
+def warm_catch_all(world):
+    world.state.watch_state[CATCH_ALL_KEY] = WatchState(warm=True, seen_events={})
+    return world
 
 
 def test_failed_send_does_not_record_seen_events(fake_world):
@@ -303,6 +319,106 @@ def test_existing_drop_log_entries_survive_new_drop(fake_world):
     state = run_cycle(CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW)
 
     assert state.drop_log[0]["film"] == "Odyseja"
+
+
+def test_silent_drop_sends_no_message(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    run_cycle(SILENT_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW)
+
+    assert world.notifier.sent == []
+
+
+def test_silent_drop_records_its_seen_events(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=False)
+    state = run_cycle(
+        SILENT_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW
+    )
+
+    assert state.watch_state["Backrooms|cc:1090"].seen_events == {"1": "2026-08-15"}
+
+
+def test_silent_drop_is_logged_as_not_notified(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=False)
+    state = run_cycle(
+        SILENT_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW
+    )
+
+    assert state.drop_log[0]["notified"] is False
+
+
+def test_delivered_drop_is_logged_as_notified(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    state = run_cycle(CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW)
+
+    assert state.drop_log[0]["notified"] is True
+
+
+def test_cold_silent_pair_records_baseline(fake_world):
+    world = fake_world(warm=False, events=[("1", "2026-08-15")], send_ok=True)
+    state = run_cycle(
+        SILENT_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW
+    )
+
+    assert state.watch_state["Backrooms|cc:1090"].seen_events == {"1": "2026-08-15"}
+
+
+def test_failed_send_leaves_silent_entry_recording_its_events(fake_world):
+    world = warm_catch_all(fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=False))
+    state = run_cycle(MIXED_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW)
+
+    assert state.watch_state[CATCH_ALL_KEY].seen_events == {"1": "2026-08-15"}
+
+
+def test_silent_entry_leaves_failed_notifying_group_unrecorded(fake_world):
+    world = warm_catch_all(fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=False))
+    state = run_cycle(MIXED_CONFIG, world.state, world.providers, world.notifier, "2026-08-02", NOW)
+
+    assert state.watch_state["Backrooms|cc:1090"].seen_events == {}
+
+
+def test_dry_run_records_no_seen_events_for_silent_entry(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    state = run_cycle(
+        SILENT_CONFIG,
+        world.state,
+        world.providers,
+        world.notifier,
+        "2026-08-02",
+        NOW,
+        dry_run=True,
+    )
+
+    assert state.watch_state["Backrooms|cc:1090"].seen_events == {}
+
+
+def test_dry_run_appends_no_drop_log_entry_for_silent_entry(fake_world):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    state = run_cycle(
+        SILENT_CONFIG,
+        world.state,
+        world.providers,
+        world.notifier,
+        "2026-08-02",
+        NOW,
+        dry_run=True,
+    )
+
+    assert state.drop_log == []
+
+
+def test_dry_run_previews_nothing_for_silent_entry(fake_world, capsys):
+    world = fake_world(warm=True, events=[("1", "2026-08-15")], send_ok=True)
+    run_cycle(
+        SILENT_CONFIG,
+        world.state,
+        world.providers,
+        world.notifier,
+        "2026-08-02",
+        NOW,
+        dry_run=True,
+    )
+
+    assert capsys.readouterr().out == ""
 
 
 def test_single_part_is_not_delayed():

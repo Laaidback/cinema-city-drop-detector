@@ -73,6 +73,32 @@ def test_empty_attributes_list_becomes_none(tmp_path):
     assert load_config(path).watch[0].attributes is None
 
 
+def test_entry_notifies_by_default(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text("horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n")
+
+    assert load_config(path).watch[0].notify is True
+
+
+def test_entry_notify_false_is_parsed(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n    notify: false\n"
+    )
+
+    assert load_config(path).watch[0].notify is False
+
+
+def test_rejects_non_boolean_notify(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n    notify: tak\n"
+    )
+
+    with pytest.raises(ValueError, match="notify"):
+        load_config(path)
+
+
 def test_rejects_empty_watch(tmp_path):
     path = tmp_path / "c.yaml"
     path.write_text("horizon_days: 90\ncinemas: [1090]\nwatch: []\n")

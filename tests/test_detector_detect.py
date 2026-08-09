@@ -71,6 +71,23 @@ def test_events_are_grouped_per_film():
     assert len(result.drops) == 2
 
 
+def test_drop_of_notifying_entry_is_marked_notifying():
+    state = {"Backrooms|1090": WatchState(warm=True, seen_events={})}
+    result = detect(CONFIG, state, [event("1")], set())
+
+    assert result.drops[0].notify is True
+
+
+def test_drop_of_silent_entry_is_marked_silent():
+    config = Config(
+        horizon_days=90, cinemas=("1090",), watch=(WatchEntry(match="Backrooms", notify=False),)
+    )
+    state = {"Backrooms|1090": WatchState(warm=True, seen_events={})}
+    result = detect(config, state, [event("1")], set())
+
+    assert result.drops[0].notify is False
+
+
 def test_force_match_reports_already_seen_event():
     state = {"Backrooms|1090": WatchState(warm=True, seen_events={"1": "2026-08-15"})}
     result = detect(CONFIG, state, [event("1")], set(), force_match="Backrooms")

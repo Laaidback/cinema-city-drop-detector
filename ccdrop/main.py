@@ -29,7 +29,17 @@ def drop_log_entry(drop: Drop, now: datetime) -> dict:
         "film": drop.film_name,
         "cinema": drop.cinema_id,
         "count": len(drop.events),
+        "notified": drop.notify,
     }
+
+
+def preview(drops, cinema_names) -> None:
+    for drop in drops:
+        if not drop.notify:
+            continue
+        for part in format_drop(drop, cinema_names):
+            print(part)
+            print()
 
 
 def send_parts(notifier, parts: list[str], sleep=time.sleep) -> bool:
@@ -60,23 +70,19 @@ def run_cycle(config, state, providers, notifier, today, now, dry_run=False, for
     outcome = detect(config, state.watch_state, fetched_events, complete, force_match)
     log.info("Pobrano %d seansów, wykryto %d grup", len(fetched_events), len(outcome.drops))
 
+    if dry_run:
+        preview(outcome.drops, cinema_names)
+        return state
+
     delivered: dict[str, dict[str, str]] = {}
     logged: list[dict] = []
     for drop in outcome.drops:
-        parts = format_drop(drop, cinema_names)
-        if dry_run:
-            for part in parts:
-                print(part)
-                print()
+        if drop.notify and not send_parts(notifier, format_drop(drop, cinema_names)):
             continue
-        if send_parts(notifier, parts):
-            delivered.setdefault(drop.watch_key, {}).update(
-                {e.id: e.business_day for e in drop.events}
-            )
-            logged.append(drop_log_entry(drop, now))
-
-    if dry_run:
-        return state
+        delivered.setdefault(drop.watch_key, {}).update(
+            {e.id: e.business_day for e in drop.events}
+        )
+        logged.append(drop_log_entry(drop, now))
 
     new_watch = dict(state.watch_state)
     for key, events in delivered.items():

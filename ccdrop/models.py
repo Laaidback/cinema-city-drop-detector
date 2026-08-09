@@ -19,6 +19,7 @@ class WatchEntry:
     match: str
     cinemas: tuple[str, ...] | None = None
     attributes: tuple[str, ...] | None = None
+    notify: bool = True
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class Drop:
     film_name: str
     cinema_id: str
     events: tuple[Event, ...]
+    notify: bool = True
 
 
 @dataclass

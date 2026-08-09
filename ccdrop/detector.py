@@ -66,6 +66,7 @@ def detect(
                         film_name=film_name,
                         cinema_id=cinema_id,
                         events=tuple(group),
+                        notify=entry.notify,
                     )
                 )
 
