@@ -10,11 +10,35 @@ def test_loads_horizon(tmp_path):
     assert load_config(path).horizon_days == 90
 
 
-def test_cinema_ids_are_strings(tmp_path):
+def test_unprefixed_cinema_id_gets_the_cinema_city_chain(tmp_path):
     path = tmp_path / "c.yaml"
     path.write_text("horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n")
 
-    assert load_config(path).cinemas == ("1090",)
+    assert load_config(path).cinemas == ("cc:1090",)
+
+
+def test_prefixed_cinema_id_keeps_its_chain(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text('horizon_days: 90\ncinemas: ["cc:1090"]\nwatch:\n  - match: Backrooms\n')
+
+    assert load_config(path).cinemas == ("cc:1090",)
+
+
+def test_rejects_unknown_chain_prefix(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text('horizon_days: 90\ncinemas: ["kino:1090"]\nwatch:\n  - match: Backrooms\n')
+
+    with pytest.raises(ValueError, match="kino:1090"):
+        load_config(path)
+
+
+def test_entry_cinema_id_gets_the_cinema_city_chain(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "horizon_days: 90\ncinemas: [1090]\nwatch:\n  - match: Backrooms\n    cinemas: [1090]\n"
+    )
+
+    assert load_config(path).watch[0].cinemas == ("cc:1090",)
 
 
 def test_entry_cinemas_default_to_none(tmp_path):

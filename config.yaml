@@ -1,5 +1,5 @@
 horizon_days: 90
-cinemas: [1060]
+cinemas: ["cc:1060"]
 watch:
   - match: "Odyseja"
     attributes: [imax]

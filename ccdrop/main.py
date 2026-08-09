@@ -3,15 +3,15 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
-from ccdrop import api as api_module
-from ccdrop.api import ApiClient, CinemaCityApi
+from ccdrop.chains import chain_of
 from ccdrop.config import load_config
 from ccdrop.detector import detect
 from ccdrop.models import Config, Drop, State, WatchState
 from ccdrop.notifier import TelegramNotifier, format_drop
+from ccdrop.providers import build_providers
 from ccdrop.schedule import WARSAW, in_window
 from ccdrop.state import load_state, save_state
 
@@ -21,10 +21,6 @@ PART_INTERVAL_SECONDS = 1.2
 
 def current_time() -> datetime:
     return datetime.now(WARSAW)
-
-
-def horizon_date(today: str, days: int) -> str:
-    return (date.fromisoformat(today) + timedelta(days=days)).isoformat()
 
 
 def drop_log_entry(drop: Drop, now: datetime) -> dict:
@@ -45,24 +41,21 @@ def send_parts(notifier, parts: list[str], sleep=time.sleep) -> bool:
     return True
 
 
-def run_cycle(config, state, api, notifier, today, now, dry_run=False, force_match=None):
-    until = horizon_date(today, config.horizon_days)
-    names = api.fetch_cinema_names(until)
+def run_cycle(config, state, providers, notifier, today, now, dry_run=False, force_match=None):
+    names = {}
+    for chain in sorted({chain_of(cinema_id) for cinema_id in config.cinemas}):
+        names.update(providers[chain].cinema_names(today, config.horizon_days))
     cinema_names = {**state.cinema_names, **names}
 
     fetched_events = []
     complete = set()
 
     for cinema_id in config.cinemas:
-        dates = api.fetch_dates(cinema_id, until)
-        if dates is None:
+        events = providers[chain_of(cinema_id)].fetch(cinema_id, today, config.horizon_days)
+        if events is None:
             continue
         complete.add(cinema_id)
-        for day in dates:
-            result = api.fetch_events(cinema_id, day)
-            if result.status is api_module.FetchOutcome.FAILED:
-                continue
-            fetched_events.extend(api_module.parse_film_events(result.payload))
+        fetched_events.extend(events)
 
     outcome = detect(config, state.watch_state, fetched_events, complete, force_match)
     log.info("Pobrano %d seansów, wykryto %d grup", len(fetched_events), len(outcome.drops))
@@ -144,7 +137,7 @@ def main(argv=None):
     updated = run_cycle(
         config,
         state,
-        CinemaCityApi(ApiClient()),
+        build_providers(),
         build_notifier(args.dry_run),
         today,
         now,

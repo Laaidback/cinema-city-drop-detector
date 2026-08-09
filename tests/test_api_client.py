@@ -1,4 +1,4 @@
-from ccdrop.api import ApiClient, FetchOutcome
+from ccdrop.api import THROTTLE_SECONDS, ApiClient, FetchOutcome
 
 
 class FakeResponse:
@@ -40,3 +40,10 @@ def test_gives_up_after_three_attempts():
     session = FakeSession([FakeResponse(500), FakeResponse(500), FakeResponse(500)])
 
     assert client(session).fetch("http://x").status is FetchOutcome.FAILED
+
+
+def test_throttle_waits_the_configured_interval():
+    delays = []
+    ApiClient(session=FakeSession([]), sleep=delays.append).throttle()
+
+    assert delays == [THROTTLE_SECONDS]

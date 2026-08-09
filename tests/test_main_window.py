@@ -17,7 +17,7 @@ SCHEDULED = WATCHED + "schedule:\n  hours: [8, 22]\n  before: 2\n  after: 3\n"
 class Run:
     code: int
     cycles: list
-    clients: list
+    built: list
     state_dir: Path
 
 
@@ -26,14 +26,20 @@ def run(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
     cycles = []
-    clients = []
+    built = []
 
-    def fake_run_cycle(config, state, api, notifier, today, now, dry_run=False, force_match=None):
+    def fake_run_cycle(
+        config, state, providers, notifier, today, now, dry_run=False, force_match=None
+    ):
         cycles.append(now)
         return state
 
+    def fake_build_providers():
+        built.append("providers")
+        return {}
+
     monkeypatch.setattr(main_module, "run_cycle", fake_run_cycle)
-    monkeypatch.setattr(main_module, "ApiClient", lambda *args, **kwargs: clients.append("client"))
+    monkeypatch.setattr(main_module, "build_providers", fake_build_providers)
 
     def go(yaml_text, hour, minute, argv=()):
         config = tmp_path / "c.yaml"
@@ -45,7 +51,7 @@ def run(tmp_path, monkeypatch):
             lambda: datetime(2026, 8, 3, hour, minute, tzinfo=WARSAW),
         )
         code = main_module.main(["--config", str(config), "--state-dir", str(state_dir), *argv])
-        return Run(code=code, cycles=cycles, clients=clients, state_dir=state_dir)
+        return Run(code=code, cycles=cycles, built=built, state_dir=state_dir)
 
     return go
 
@@ -58,8 +64,8 @@ def test_outside_the_window_skips_the_cycle(run):
     assert run(SCHEDULED, 9, 30).cycles == []
 
 
-def test_outside_the_window_builds_no_api_client(run):
-    assert run(SCHEDULED, 9, 30).clients == []
+def test_outside_the_window_builds_no_provider(run):
+    assert run(SCHEDULED, 9, 30).built == []
 
 
 def test_outside_the_window_writes_no_state_file(run):

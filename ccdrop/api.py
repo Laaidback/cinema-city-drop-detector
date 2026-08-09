@@ -1,10 +1,12 @@
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date, timedelta
 from enum import Enum
 
 import requests
 
+from ccdrop.chains import local_id, prefixed
 from ccdrop.models import Event
 
 BASE = "https://www.cinema-city.pl/pl/data-api-service/v1/quickbook/10103"
@@ -14,6 +16,10 @@ MAX_ATTEMPTS = 3
 THROTTLE_SECONDS = 0.2
 
 log = logging.getLogger("ccdrop")
+
+
+def horizon_date(today: str, days: int) -> str:
+    return (date.fromisoformat(today) + timedelta(days=days)).isoformat()
 
 
 def cinemas_url(until: str) -> str:
@@ -104,28 +110,48 @@ class ApiClient:
         self.sleep(THROTTLE_SECONDS)
 
 
-class CinemaCityApi:
+class CinemaCityProvider:
+    chain = "cc"
+
     def __init__(self, client: ApiClient):
         self.client = client
 
-    def fetch_cinema_names(self, until: str) -> dict[str, str]:
-        result = self.client.fetch(cinemas_url(until))
+    def cinema_names(self, today: str, horizon_days: int) -> dict[str, str]:
+        result = self.client.fetch(cinemas_url(horizon_date(today, horizon_days)))
         self.client.throttle()
         if result.status is not FetchOutcome.OK:
             log.warning("Nie udało się pobrać nazw kin — powiadomienia pokażą numery")
             return {}
-        return parse_cinema_names(result.payload)
+        return {
+            prefixed(self.chain, cinema_id): name
+            for cinema_id, name in parse_cinema_names(result.payload).items()
+        }
+
+    def fetch(self, cinema_id: str, today: str, horizon_days: int) -> list[Event] | None:
+        dates = self.fetch_dates(cinema_id, horizon_date(today, horizon_days))
+        if dates is None:
+            return None
+
+        events: list[Event] = []
+        for day in dates:
+            events.extend(self.fetch_day(cinema_id, day))
+        return events
 
     def fetch_dates(self, cinema_id: str, until: str) -> list[str] | None:
-        result = self.client.fetch(dates_url(cinema_id, until))
+        result = self.client.fetch(dates_url(local_id(cinema_id), until))
         self.client.throttle()
         if result.status is not FetchOutcome.OK:
             log.warning("Brak listy dat dla kina %s — kino pominięte w tym cyklu", cinema_id)
             return None
         return parse_dates(result.payload)
 
-    def fetch_events(self, cinema_id: str, day: str):
-        result = self.client.fetch(events_url(cinema_id, day))
+    def fetch_day(self, cinema_id: str, day: str) -> list[Event]:
+        result = self.client.fetch(events_url(local_id(cinema_id), day))
         self.client.throttle()
         log.debug("kino %s dzień %s -> %s", cinema_id, day, result.status.value)
-        return result
+        if result.status is not FetchOutcome.OK:
+            return []
+        return [
+            replace(event, cinema_id=prefixed(self.chain, event.cinema_id))
+            for event in parse_film_events(result.payload)
+        ]

@@ -2,9 +2,19 @@ from pathlib import Path
 
 import yaml
 
+from ccdrop.chains import CHAIN_SEPARATOR, chain_of, prefixed
 from ccdrop.models import Config, Schedule, WatchEntry
+from ccdrop.providers import DEFAULT_CHAIN, PROVIDERS
 
 MAX_MARGIN_SUM = 59
+
+
+def normalise_cinema_id(value) -> str:
+    text = str(value)
+    cinema_id = text if CHAIN_SEPARATOR in text else prefixed(DEFAULT_CHAIN, text)
+    if chain_of(cinema_id) not in PROVIDERS:
+        raise ValueError(f"cinemas: nieznana sieć kin w wartości '{text}'")
+    return cinema_id
 
 
 def parse_schedule(raw) -> Schedule | None:
@@ -37,7 +47,7 @@ def parse_schedule(raw) -> Schedule | None:
 def load_config(path: Path) -> Config:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
 
-    cinemas = tuple(str(c) for c in raw.get("cinemas", []))
+    cinemas = tuple(normalise_cinema_id(c) for c in raw.get("cinemas", []))
     if not cinemas:
         raise ValueError("cinemas: lista nie może być pusta")
 
@@ -51,7 +61,7 @@ def load_config(path: Path) -> Config:
         if not match:
             raise ValueError("watch: każdy wpis wymaga pola match")
         own = item.get("cinemas")
-        own_ids = tuple(str(c) for c in own) if own else None
+        own_ids = tuple(normalise_cinema_id(c) for c in own) if own else None
         for cinema in own_ids or ():
             if cinema not in cinemas:
                 raise ValueError(f"watch/{match}: kino {cinema} spoza globalnej listy cinemas")

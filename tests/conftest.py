@@ -2,44 +2,37 @@ import dataclasses
 
 import pytest
 
-from ccdrop.api import FetchOutcome, FetchResult
-from ccdrop.models import State, WatchState
+from ccdrop.models import Event, State, WatchState
 
 
-class FakeApi:
+class FakeProvider:
     def __init__(self, events_by_date, failed_dates, dates_fail):
         self.events_by_date = events_by_date
         self.failed_dates = set(failed_dates)
         self.dates_fail = dates_fail
 
-    def fetch_cinema_names(self, until):
-        return {"1090": "Kraków Bonarka"}
+    def cinema_names(self, today, horizon_days):
+        return {"cc:1090": "Kraków Bonarka"}
 
-    def fetch_dates(self, cinema_id, until):
+    def fetch(self, cinema_id, today, horizon_days):
         if self.dates_fail:
             return None
-        return sorted(set(self.events_by_date) | self.failed_dates)
-
-    def fetch_events(self, cinema_id, day):
-        if day in self.failed_dates:
-            return FetchResult(FetchOutcome.FAILED)
-        raw = [
-            {
-                "id": eid,
-                "filmId": "f1",
-                "cinemaId": cinema_id,
-                "businessDay": business_day,
-                "eventDateTime": f"{business_day}T18:30:00",
-                "auditorium": "Sala 4",
-                "bookingLink": f"https://tickets.cinema-city.pl/api/order/{eid}",
-                "attributeIds": ["imax"],
-            }
-            for eid, business_day in self.events_by_date.get(day, [])
+        return [
+            Event(
+                id=eid,
+                film_id="f1",
+                film_name="Backrooms. Bez wyjścia",
+                cinema_id=cinema_id,
+                business_day=business_day,
+                date_time=f"{business_day}T18:30:00",
+                auditorium="Sala 4",
+                booking_link=f"https://tickets.cinema-city.pl/api/order/{eid}",
+                attribute_ids=("imax",),
+            )
+            for day in sorted(self.events_by_date)
+            if day not in self.failed_dates
+            for eid, business_day in self.events_by_date[day]
         ]
-        payload = {
-            "body": {"films": [{"id": "f1", "name": "Backrooms. Bez wyjścia"}], "events": raw}
-        }
-        return FetchResult(FetchOutcome.OK, payload=payload)
 
 
 class FakeNotifier:
@@ -58,7 +51,7 @@ class FakeNotifier:
 @dataclasses.dataclass
 class World:
     state: State
-    api: FakeApi
+    providers: dict
     notifier: FakeNotifier
 
 
@@ -70,10 +63,10 @@ def fake_world():
             events_by_date.setdefault(business_day, []).append((event_id, business_day))
         state = State()
         if warm:
-            state.watch_state["Backrooms|1090"] = WatchState(warm=True, seen_events={})
+            state.watch_state["Backrooms|cc:1090"] = WatchState(warm=True, seen_events={})
         return World(
             state=state,
-            api=FakeApi(events_by_date, failed_dates, dates_fail),
+            providers={"cc": FakeProvider(events_by_date, failed_dates, dates_fail)},
             notifier=FakeNotifier(send_ok, fail_from),
         )
 
