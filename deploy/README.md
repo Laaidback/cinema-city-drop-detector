@@ -13,6 +13,14 @@ apt update
 apt install -y git python3 python3-venv
 ```
 
+Wymagany Python 3.10 lub nowszy. Sprawdź, co jest w obrazie:
+
+```bash
+python3 --version
+```
+
+Ubuntu 22.04 daje 3.10, Ubuntu 24.04 — 3.12, Debian 12 — 3.11. Każdy z nich wystarczy.
+
 ## 2. Użytkownik systemowy
 
 ```bash
