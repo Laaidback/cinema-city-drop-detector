@@ -1,6 +1,7 @@
 from typing import Callable, Protocol
 
 from ccdrop.api import ApiClient, CinemaCityProvider
+from ccdrop.helios import HeliosProvider, PageClient, QjsEvaluator
 from ccdrop.models import Event
 
 
@@ -12,6 +13,7 @@ class Provider(Protocol):
 
 PROVIDERS: dict[str, Callable[[], Provider]] = {
     CinemaCityProvider.chain: lambda: CinemaCityProvider(ApiClient()),
+    HeliosProvider.chain: lambda: HeliosProvider(PageClient(), QjsEvaluator()),
 }
 
 DEFAULT_CHAIN = CinemaCityProvider.chain
