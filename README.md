@@ -13,6 +13,6 @@ repertuar — `tools/drop_hours.py` liczy obie grupy osobno.
 - Co śledzić: `config.yaml`
 - Projekt i uzasadnienia decyzji: `docs/superpowers/specs/`
 - Plan implementacji: `docs/superpowers/plans/`
-- Uruchamianie: cron na VPS, okno wokół pełnej godziny (`deploy/README.md`).
+- Wdrożenie i uruchamianie: cron na VPS (Alpine, bez systemd) — `deploy/README.md`.
+  Teraz tryb pomiarowy co minutę, docelowo okno wokół pełnej godziny.
   Workflow GitHub Actions jest **wyłączony celowo** — dwie instancje wysyłałyby wszystko podwójnie
-- Wdrożenie na VPS z oknem wokół pełnej godziny: `deploy/README.md`
