@@ -713,7 +713,7 @@ z niej stan repertuaru.
 - nieudana część wielocząstkowej wiadomości nie zapisuje niczego i nie wysyła części dalszych.
 
 Każda z tych reguł musi być zweryfikowana **mutacyjnie** — zepsuj odpowiadającą jej linię i sprawdź,
-czy któryś test faktycznie się czerwieni. W tym projekcie trzykrotnie trafił się test, który
+czy któryś test faktycznie się czerwieni. W tym projekcie cztery razy trafił się test, który
 wyglądał na pokrycie, a nie mógł zawieść.
 
 **Pułapka: nieświeży bajtkod.** Przebieg mutacyjny musi usuwać `__pycache__` i ustawiać

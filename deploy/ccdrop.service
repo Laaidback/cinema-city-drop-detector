@@ -9,7 +9,7 @@ User=ccdrop
 Group=ccdrop
 WorkingDirectory=/opt/ccdrop
 EnvironmentFile=/etc/ccdrop/ccdrop.env
-ExecStart=/opt/ccdrop/.venv/bin/python -m ccdrop.main --state-dir /var/lib/ccdrop
+ExecStart=/opt/ccdrop/.venv/bin/python -m ccdrop.main --config /etc/ccdrop/config.yaml --state-dir /var/lib/ccdrop
 TimeoutStartSec=120
 
 NoNewPrivileges=true

@@ -1,3 +1,5 @@
+import requests
+
 from ccdrop.api import THROTTLE_SECONDS, ApiClient, FetchOutcome
 
 
@@ -18,6 +20,19 @@ class FakeSession:
     def get(self, url, headers=None, timeout=None):
         self.calls.append((url, dict(headers or {})))
         return self.responses.pop(0)
+
+
+class FailingSession:
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+
+    def get(self, url, headers=None, timeout=None):
+        self.calls.append((url, dict(headers or {})))
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 def client(session):
@@ -47,3 +62,21 @@ def test_throttle_waits_the_configured_interval():
     ApiClient(session=FakeSession([]), sleep=delays.append).throttle()
 
     assert delays == [THROTTLE_SECONDS]
+
+
+def test_retries_on_server_error_then_succeeds():
+    session = FakeSession([FakeResponse(503), FakeResponse(200, {"body": {}})])
+
+    assert client(session).fetch("http://x").status is FetchOutcome.OK
+
+
+def test_network_exception_is_retried():
+    session = FailingSession(requests.ConnectionError("zerwane"), FakeResponse(200, {"body": {}}))
+
+    assert client(session).fetch("http://x").status is FetchOutcome.OK
+
+
+def test_network_exception_exhausts_attempts():
+    session = FailingSession(*[requests.ConnectionError("zerwane")] * 3)
+
+    assert client(session).fetch("http://x").status is FetchOutcome.FAILED

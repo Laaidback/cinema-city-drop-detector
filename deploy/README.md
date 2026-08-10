@@ -171,9 +171,9 @@ Crontab użytkownika `frog` instaluj w całości, z pliku, a nie przez `crontab 
 ```sh
 crontab - <<'EOF'
 # pomiar: co minutę, całą dobę
-* * * * * set -a; . /home/frog/.config/ccdrop/env; set +a; /home/frog/ccdrop/.venv/bin/ccdrop --config /home/frog/.config/ccdrop/config.yaml --state-dir /home/frog/.local/state/ccdrop >>/home/frog/.local/state/ccdrop/ccdrop.log 2>&1
+* * * * * cd /home/frog/ccdrop && set -a && . /home/frog/.config/ccdrop/env && set +a && /home/frog/ccdrop/.venv/bin/python -m ccdrop.main --config /home/frog/.config/ccdrop/config.yaml --state-dir /home/frog/.local/state/ccdrop >> /home/frog/.local/state/ccdrop/ccdrop.log 2>&1
 # przycięcie logu: zostaw 5000 ostatnich wierszy
-0 4 * * * tail -n 5000 /home/frog/.local/state/ccdrop/ccdrop.log >/home/frog/.local/state/ccdrop/ccdrop.log.tmp && mv /home/frog/.local/state/ccdrop/ccdrop.log.tmp /home/frog/.local/state/ccdrop/ccdrop.log
+0 4 * * * tail -n 5000 /home/frog/.local/state/ccdrop/ccdrop.log > /home/frog/.local/state/ccdrop/ccdrop.log.tmp && mv /home/frog/.local/state/ccdrop/ccdrop.log.tmp /home/frog/.local/state/ccdrop/ccdrop.log
 EOF
 ```
 
